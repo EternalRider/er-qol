@@ -460,6 +460,13 @@ export class RegionTeleportBehaviorType extends foundry.data.regionBehaviors.Reg
       createData.x = this.x;
       createData.y = this.y;
       createData.elevation = this.elevation ?? 0;
+      // 跨场景的新 Token 也要带上冷却标记（同场景分支在 update 之后写），
+      // 否则它在目标场景立刻被同一套传送判定再抓一次。
+      if ( cooldown > 0 ) {
+        createData.flags ??= {};
+        createData.flags[MODULE_ID] ??= {};
+        createData.flags[MODULE_ID][TELEPORT_COOLDOWN_FLAG] = Date.now();
+      }
       await targetScene.createEmbeddedDocuments("Token", [createData]);
       await token.delete();
       _notifyTeleport(this.notify, message, token);

@@ -742,6 +742,29 @@ await crossSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(cross
   {name: CONST.REGION_EVENTS.TOKEN_ENTER, data: {token: crossToken}});
 assert("玩家做跨场景传送时给出 GM 警告且不创建 Token",
   NOTIFICATIONS.some(n => n.level === "warn" && /GM/i.test(String(n.message))));
+
+// GM 跨场景：新 Token 应带上冷却标记，避免在目标场景被立刻再传送一次。
+globalThis.game.user = USER;
+const gmCrossSystem = new features.RegionTeleportBehaviorType({
+  scene: "scene-2", x: 10, y: 20, elevation: 0, consume: true, notify: false,
+  message: "", destinationRegion: ""
+});
+makeBehavior("er-qol.regionTeleport", gmCrossSystem, makeRegion({name: "Stairs2"}));
+const gmCrossToken = makeToken();
+const createdTokens = [];
+otherScene.createEmbeddedDocuments = async (type, data) => {
+  createdTokens.push(...data);
+  return data;
+};
+await gmCrossSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(gmCrossSystem,
+  {name: CONST.REGION_EVENTS.TOKEN_ENTER, data: {token: gmCrossToken}});
+assert("GM 跨场景传送创建了新 Token 并删除原 Token",
+  createdTokens.length === 1 && gmCrossToken.deleted === true,
+  `created=${createdTokens.length} deleted=${gmCrossToken.deleted}`);
+assert("跨场景新 Token 带冷却标记（避免目标场景立刻再传送）",
+  typeof createdTokens[0]?.flags?.["er-qol"]?.teleportCooldown === "number",
+  JSON.stringify(createdTokens[0]?.flags ?? {}));
+globalThis.game.user = USER;
 globalThis.game.user = USER;
 
 /* -------------------------------------------------------------------------- */
