@@ -1,0 +1,15 @@
+# 依赖与产物
+node_modules/
+dist/
+coverage/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+*.log
+
+# 打包产物（发布时用 GitHub Release 产物，不入库）
+*.zip
+er-qol.lock

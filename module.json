@@ -1,0 +1,47 @@
+{
+  "id": "er-qol",
+  "title": "EternalRider's QoL",
+  "description": "Region quality-of-life bundle: Region-driven lighting/darkness, wall-like Region boundaries, region announcements, region teleport, hover highlight and region info. Merges and supersedes the region-lighting and region-walls modules.",
+  "version": "1.0.0",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "EternalRider"
+    }
+  ],
+  "compatibility": {
+    "minimum": "14",
+    "verified": "14.361"
+  },
+  "esmodules": [
+    "scripts/main.mjs"
+  ],
+  "documentTypes": {
+    "RegionBehavior": {
+      "regionLighting": {},
+      "regionWall": {},
+      "regionAnnounce": {},
+      "regionTeleport": {}
+    }
+  },
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    },
+    {
+      "lang": "zh-CN",
+      "name": "Chinese (Simplified)",
+      "path": "lang/zh-CN.json"
+    },
+    {
+      "lang": "cn",
+      "name": "中文",
+      "path": "lang/cn.json"
+    }
+  ],
+  "url": "https://github.com/EternalRider/er-qol",
+  "readme": "https://github.com/EternalRider/er-qol/blob/main/README.md",
+  "bugs": "https://github.com/EternalRider/er-qol/issues"
+}

@@ -1,0 +1,189 @@
+{
+  "TYPES": {
+    "RegionBehavior": {
+      "er-qol.regionLighting": "区域光照",
+      "er-qol.regionWall": "区域墙体",
+      "er-qol.regionAnnounce": "区域提示",
+      "er-qol.regionTeleport": "区域传送"
+    },
+    "HINTS": {
+      "RegionBehavior": {
+        "er-qol.regionLighting": "使用 Region 的完整形状与高度范围来发出光照或黑暗。",
+        "er-qol.regionWall": "把 Region 边界变成类似墙体的阻挡物，可分别阻挡移动、光照、视觉、声音与黑暗。",
+        "er-qol.regionAnnounce": "Token 进入或离开这个 Region 时发送通知或聊天消息。",
+        "er-qol.regionTeleport": "Token 进入这个 Region 时被传送到指定场景或坐标。"
+      }
+    }
+  },
+  "ERQOL": {
+    "REGION_LIGHTING": {
+      "label": "区域光照",
+      "hint": "使用 Region 的完整形状与高度范围来发出光照或黑暗。",
+      "FIELDS": {
+        "priority": {
+          "hint": "当优先级大于 0 时，这个 Region 会生成光照优先级边界，从而覆盖更低优先级的光照或黑暗。"
+        },
+        "animation": {
+          "type": {
+            "hint": "选择一个已注册的 Foundry 光照动画。留空则为静态 Region 光照。"
+          }
+        }
+      }
+    },
+    "REGION_WALLS": {
+      "label": "区域墙体",
+      "hint": "把 Region 边界变成类似墙体的阻挡物，可分别阻挡移动、光照、视觉、声音与黑暗。",
+      "FIELDS": {
+        "move": {
+          "label": "阻挡移动",
+          "hint": "阻止 Token 穿越这个 Region 边界。"
+        },
+        "sight": {
+          "label": "阻挡视觉",
+          "hint": "阻止视线与可见性判定穿越这个 Region 边界。"
+        },
+        "light": {
+          "label": "阻挡光照",
+          "hint": "阻止光源投射穿越这个 Region 边界。"
+        },
+        "sound": {
+          "label": "阻挡声音",
+          "hint": "阻止声源传播穿越这个 Region 边界。"
+        },
+        "darkness": {
+          "label": "阻挡黑暗",
+          "hint": "阻止黑暗源投射穿越这个 Region 边界。"
+        },
+        "direction": {
+          "label": "阻挡方向",
+          "hint": "选择边界是双向阻挡，还是只按 Region 内外关系单向阻挡。"
+        }
+      },
+      "DIRECTIONS": {
+        "both": {
+          "label": "双向"
+        },
+        "insideToOutside": {
+          "label": "仅从内到外"
+        },
+        "outsideToInside": {
+          "label": "仅从外到内"
+        }
+      }
+    },
+    "REGION_ANNOUNCE": {
+      "label": "区域提示",
+      "hint": "Token 进入或离开这个 Region 时发送通知或聊天消息。",
+      "FIELDS": {
+        "notifyEntry": {
+          "label": "进入时提示",
+          "hint": "Token 进入这个 Region 时发出提示。"
+        },
+        "notifyExit": {
+          "label": "离开时提示",
+          "hint": "Token 离开这个 Region 时发出提示。"
+        },
+        "entryMessage": {
+          "label": "进入消息",
+          "hint": "可选。支持 {token} 与 {region} 占位符。留空使用默认文本。"
+        },
+        "exitMessage": {
+          "label": "离开消息",
+          "hint": "可选。支持 {token} 与 {region} 占位符。留空使用默认文本。"
+        },
+        "output": {
+          "label": "输出方式",
+          "hint": "以界面通知或聊天消息的形式发出。"
+        },
+        "visibility": {
+          "label": "可见范围",
+          "hint": "谁可以收到这条提示。"
+        },
+        "soundEnabled": {
+          "label": "播放音效"
+        },
+        "sound": {
+          "src": {
+            "label": "音效文件"
+          },
+          "volume": {
+            "label": "音效音量"
+          }
+        }
+      },
+      "OUTPUT": {
+        "notification": "界面通知",
+        "chat": "聊天消息"
+      },
+      "VISIBILITY": {
+        "all": "所有人",
+        "observers": "GM 与 Token 所有者",
+        "gm": "仅 GM"
+      }
+    },
+    "REGION_TELEPORT": {
+      "label": "区域传送",
+      "hint": "Token 进入这个 Region 时被传送到指定场景或坐标。",
+      "FIELDS": {
+        "scene": {
+          "label": "目标场景",
+          "hint": "目标场景 id。留空表示在当前场景内传送。"
+        },
+        "x": {
+          "label": "目标 X"
+        },
+        "y": {
+          "label": "目标 Y"
+        },
+        "elevation": {
+          "label": "目标高度"
+        },
+        "consume": {
+          "label": "使用冷却",
+          "hint": "启用后，刚被传送的 Token 在冷却结束前不会再触发同一个目标 Region。"
+        },
+        "notify": {
+          "label": "通知所有者",
+          "hint": "传送后向 GM 与 Token 所有者显示一条通知。"
+        },
+        "message": {
+          "label": "通知文本",
+          "hint": "可选。支持 {token} 与 {region} 占位符。"
+        },
+        "label": {
+          "label": "目标 Region 名称",
+          "hint": "可选。填写后目标场景名必须一致，且站入同名 Region 会清除冷却。"
+        }
+      },
+      "NOTIFY": {
+        "noScene": "区域传送：找不到目标场景。",
+        "wrongScene": "区域传送：目标场景是「{scene}」，但期望「{label}」。"
+      }
+    },
+    "SETTINGS": {
+      "hoverHighlight": {
+        "name": "悬停高亮",
+        "hint": "鼠标悬停在 Region 上时高亮其轮廓。"
+      },
+      "hoverInfo": {
+        "name": "悬停信息",
+        "hint": "鼠标悬停在 Region 上时显示简要信息（包含的行为与高度范围）。"
+      },
+      "teleportCooldown": {
+        "name": "传送冷却（毫秒）",
+        "hint": "Token 被传送后多久内不再触发区域传送。设为 0 关闭冷却。"
+      }
+    },
+    "INFO": {
+      "behaviors": "包含行为",
+      "elevation": "高度范围",
+      "shapes": "形状数量"
+    },
+    "NOTIFY": {
+      "regionEntry": "{token} 进入了区域「{region}」。",
+      "regionExit": "{token} 离开了区域「{region}」。",
+      "teleported": "{token} 被区域「{region}」传送。",
+      "unnamedRegion": "未命名区域"
+    }
+  }
+}

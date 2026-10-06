@@ -1,0 +1,189 @@
+{
+  "TYPES": {
+    "RegionBehavior": {
+      "er-qol.regionLighting": "Region Lighting",
+      "er-qol.regionWall": "Region Walls",
+      "er-qol.regionAnnounce": "Region Announce",
+      "er-qol.regionTeleport": "Region Teleport"
+    },
+    "HINTS": {
+      "RegionBehavior": {
+        "er-qol.regionLighting": "Emit light or darkness using the Region's full shape, including its elevation range.",
+        "er-qol.regionWall": "Turn the Region boundary into a wall-like blocker for movement, light, sight, sound, and optionally darkness.",
+        "er-qol.regionAnnounce": "Post a notification or chat message when a token enters or leaves this Region.",
+        "er-qol.regionTeleport": "Teleport tokens that enter this Region to a destination scene or coordinate."
+      }
+    }
+  },
+  "ERQOL": {
+    "REGION_LIGHTING": {
+      "label": "Region Lighting",
+      "hint": "Emit light or darkness using the Region's full shape, including its elevation range.",
+      "FIELDS": {
+        "priority": {
+          "hint": "At values above 0, the Region contributes priority source edges so it can override lower-priority light or darkness."
+        },
+        "animation": {
+          "type": {
+            "hint": "Choose a registered Foundry light animation. Leave empty for a static Region light."
+          }
+        }
+      }
+    },
+    "REGION_WALLS": {
+      "label": "Region Walls",
+      "hint": "Turn the Region boundary into a wall-like blocker for movement, light, sight, sound, and optionally darkness.",
+      "FIELDS": {
+        "move": {
+          "label": "Block Movement",
+          "hint": "Prevent tokens from crossing this Region boundary."
+        },
+        "sight": {
+          "label": "Block Sight",
+          "hint": "Prevent line of sight and visibility checks from crossing this Region boundary."
+        },
+        "light": {
+          "label": "Block Light",
+          "hint": "Prevent light sources from projecting through this Region boundary."
+        },
+        "sound": {
+          "label": "Block Sound",
+          "hint": "Prevent sound sources from projecting through this Region boundary."
+        },
+        "darkness": {
+          "label": "Block Darkness",
+          "hint": "Prevent darkness sources from projecting through this Region boundary."
+        },
+        "direction": {
+          "label": "Blocking Direction",
+          "hint": "Choose whether the boundary blocks both directions or only one direction relative to the Region interior."
+        }
+      },
+      "DIRECTIONS": {
+        "both": {
+          "label": "Both Directions"
+        },
+        "insideToOutside": {
+          "label": "Inside to Outside Only"
+        },
+        "outsideToInside": {
+          "label": "Outside to Inside Only"
+        }
+      }
+    },
+    "REGION_ANNOUNCE": {
+      "label": "Region Announce",
+      "hint": "Post a notification or chat message when a token enters or leaves this Region.",
+      "FIELDS": {
+        "notifyEntry": {
+          "label": "Announce Entry",
+          "hint": "Announce when a token enters this Region."
+        },
+        "notifyExit": {
+          "label": "Announce Exit",
+          "hint": "Announce when a token leaves this Region."
+        },
+        "entryMessage": {
+          "label": "Entry Message",
+          "hint": "Optional. Supports {token} and {region}. Leave empty to use the default text."
+        },
+        "exitMessage": {
+          "label": "Exit Message",
+          "hint": "Optional. Supports {token} and {region}. Leave empty to use the default text."
+        },
+        "output": {
+          "label": "Output",
+          "hint": "Send the announcement as a UI notification or as a chat message."
+        },
+        "visibility": {
+          "label": "Visible To",
+          "hint": "Who should receive the announcement."
+        },
+        "soundEnabled": {
+          "label": "Play Sound"
+        },
+        "sound": {
+          "src": {
+            "label": "Sound File"
+          },
+          "volume": {
+            "label": "Sound Volume"
+          }
+        }
+      },
+      "OUTPUT": {
+        "notification": "UI Notification",
+        "chat": "Chat Message"
+      },
+      "VISIBILITY": {
+        "all": "Everyone",
+        "observers": "GM and Token Owner",
+        "gm": "GM Only"
+      }
+    },
+    "REGION_TELEPORT": {
+      "label": "Region Teleport",
+      "hint": "Teleport tokens that enter this Region to a destination scene or coordinate.",
+      "FIELDS": {
+        "scene": {
+          "label": "Destination Scene",
+          "hint": "Scene id to teleport to. Leave empty to teleport within the current scene."
+        },
+        "x": {
+          "label": "Destination X"
+        },
+        "y": {
+          "label": "Destination Y"
+        },
+        "elevation": {
+          "label": "Destination Elevation"
+        },
+        "consume": {
+          "label": "Use Cooldown",
+          "hint": "When enabled, a teleported token cannot trigger the same destination Region again until the cooldown expires."
+        },
+        "notify": {
+          "label": "Notify Owner",
+          "hint": "Show a notification to the GM and the token's owner after the teleport."
+        },
+        "message": {
+          "label": "Notify Message",
+          "hint": "Optional. Supports {token} and {region}."
+        },
+        "label": {
+          "label": "Destination Region Name",
+          "hint": "Optional. When set, the destination scene name must match and standing inside a Region with this name clears the cooldown."
+        }
+      },
+      "NOTIFY": {
+        "noScene": "Region Teleport: destination scene was not found.",
+        "wrongScene": "Region Teleport: destination scene is \"{scene}\", expected \"{label}\"."
+      }
+    },
+    "SETTINGS": {
+      "hoverHighlight": {
+        "name": "Hover Highlight",
+        "hint": "Highlight a Region's outline when the mouse hovers over it."
+      },
+      "hoverInfo": {
+        "name": "Hover Info",
+        "hint": "Show a small info notice (behaviors and elevation range) when hovering a Region."
+      },
+      "teleportCooldown": {
+        "name": "Teleport Cooldown (ms)",
+        "hint": "How long a token is immune to Region Teleport after being teleported. Set to 0 to disable."
+      }
+    },
+    "INFO": {
+      "behaviors": "Behaviors",
+      "elevation": "Elevation",
+      "shapes": "Shapes"
+    },
+    "NOTIFY": {
+      "regionEntry": "{token} entered region {region}.",
+      "regionExit": "{token} left region {region}.",
+      "teleported": "{token} was teleported by region {region}.",
+      "unnamedRegion": "Region"
+    }
+  }
+}
