@@ -175,9 +175,16 @@ export function getWallSegment(doc, wallObject = null) {
 /**
  * 判断一面墙是否应该画提示线。
  *
- * 唯一的过滤是密门：`showSecret` 为 false 时跳过 `door === CONST.WALL_DOOR_TYPES.SECRET`，
- * 否则提示线会泄露密门位置；**不做** `game.user.isGM` 门禁（这是纯客户端可视化，
- * 是否看密门交给设置决定）。
+ * 过滤规则（都是"别把 GM 视图里的东西画给玩家"）：
+ *
+ * 1. **密门**：`showSecret` 为 false 时跳过 `door === CONST.WALL_DOOR_TYPES.SECRET`；
+ * 2. **隐形墙**：`sight === NONE && move === NONE` 的墙在核心墙体图层里也是 GM 专用的
+ *    （整层 `visible: game.user.isGM`），玩家的画布上根本没有它们的视觉信息，
+ *    我们若照画就等于把 GM 特意藏起来的墙位画出来；
+ * 3. **虚体墙（ethereal）**：同属核心只在墙体图层给 GM 看的类别。
+ *
+ * **不做** `game.user.isGM` 门禁：这是纯客户端可视化，是否看密门交给设置决定；
+ * 但默认设置必须保证"不泄露 GM 视图"，所以要靠上面的类别过滤而不是靠玩家的自觉。
  *
  * @param {WallDocument} doc 墙体文档
  * @param {boolean} [showSecret=false] 是否显示密门提示线
@@ -185,8 +192,34 @@ export function getWallSegment(doc, wallObject = null) {
  */
 export function isWallHintEligible(doc, showSecret = false) {
   if ( !doc ) return false;
+  if ( isGmOnlyWall(doc) ) return false;
   if ( showSecret ) return true;
   return doc.door !== getSecretDoorType();
+}
+
+/**
+ * 判断一面墙是否属于"核心只在墙体图层给 GM 看"的类别。
+ *
+ * 判据：隐形墙（`sight` 与 `move` 都是 NONE）或虚体墙（`ethereal`）。
+ * 类别名优先用文档自带的 `getWallCategory()`，退化用 sense 值判断。
+ *
+ * @param {WallDocument} doc 墙体文档
+ * @returns {boolean} 属于 GM 专用类别时返回 true
+ */
+export function isGmOnlyWall(doc) {
+  if ( !doc ) return false;
+
+  let category = "";
+  try {
+    category = String(doc.getWallCategory?.() ?? "");
+  } catch ( err ) {
+    category = "";
+  }
+  if ( category === "invisible" || category === "ethereal" ) return true;
+
+  // 退化判据：GM 视图里的"隐形墙"就是既不挡视线也不挡移动的墙。
+  const none = getSenseNone();
+  return (doc.sight === none) && (doc.move === none);
 }
 
 /**
@@ -212,6 +245,15 @@ export function shouldHideHintOnWallsLayer(scope, wallsActive) {
  */
 function getSecretDoorType() {
   return globalThis.CONST?.WALL_DOOR_TYPES?.SECRET ?? 2;
+}
+
+/**
+ * 取 `CONST.EDGE_SENSE_TYPES.NONE`（表示该墙在该通道上完全不生效，本机为 0）。
+ *
+ * @returns {number} `NONE` 的数值；常量缺失时回退 0
+ */
+function getSenseNone() {
+  return globalThis.CONST?.EDGE_SENSE_TYPES?.NONE ?? 0;
 }
 
 /**

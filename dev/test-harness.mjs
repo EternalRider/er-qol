@@ -808,6 +808,18 @@ const normalWallDoc = {c: [{x: 0, y: 0}, {x: 10, y: 0}], door: 0, levels: new Se
 assert("默认排除密门", wallHint.isWallHintEligible(secretWallDoc, false) === false);
 assert("开启后包含密门", wallHint.isWallHintEligible(secretWallDoc, true) === true);
 assert("普通墙始终符合条件", wallHint.isWallHintEligible(normalWallDoc, false) === true);
+
+// 隐形墙 / 虚体墙在核心墙体图层里也是 GM 专用的，玩家端不该被画出来。
+const invisibleWallDoc = {c: [{x: 0, y: 0}, {x: 10, y: 0}], door: 0, sight: 0, move: 0, levels: new Set()};
+const etherealWallDoc = {
+  c: [{x: 0, y: 0}, {x: 10, y: 0}], door: 0, sight: 1, move: 1, levels: new Set(),
+  getWallCategory: () => "ethereal"
+};
+assert("隐形墙（sight=NONE 且 move=NONE）不画", wallHint.isWallHintEligible(invisibleWallDoc, false) === false);
+assert("隐形墙即使开启密门也不画", wallHint.isWallHintEligible(invisibleWallDoc, true) === false);
+assert("虚体墙不画", wallHint.isWallHintEligible(etherealWallDoc, true) === false);
+assert("GM 专用类别判定：隐形墙", wallHint.isGmOnlyWall(invisibleWallDoc) === true);
+assert("GM 专用类别判定：普通墙为 false", wallHint.isGmOnlyWall({sight: 1, move: 1}) === false);
 assert("缺少端点的墙被跳过", wallHint.getWallSegment({c: [{x: 0, y: 0}]}) === null);
 assert("端点解析正确",
   deepEqual(wallHint.getWallSegment(normalWallDoc), {a: {x: 0, y: 0}, b: {x: 10, y: 0}}));

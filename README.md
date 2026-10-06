@@ -71,11 +71,13 @@ Client-side settings in **Configure Settings → EternalRider's QoL**:
 Client-side setting that draws a thin line for **every wall even when the Walls layer is not
 active**, so everyone can see where the real wall lines are while moving tokens around.
 
-- one **uniform configurable color** — deliberately *not* the Walls-layer colors, which would give
-  secret doors away at a glance;
+- one **uniform configurable color** (with a color picker) — deliberately *not* the Walls-layer
+  colors, which would give secret doors away at a glance;
 - configurable width and opacity;
 - scope: only on other layers (hidden while the Walls layer is active) or always;
-- secret doors are excluded by default (opt in via **Include Secret Doors**).
+- walls that core only shows to the GM (secret doors, invisible walls, ethereal walls) are **never**
+  drawn — not even with **Include Secret Doors** enabled. That option only affects secret doors you
+  explicitly want to mark, and those still use the uniform color.
 
 ## Compatibility
 

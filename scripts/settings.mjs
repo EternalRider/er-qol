@@ -108,8 +108,11 @@ export function registerWallHintSettings() {
     hint: "ERQOL.SETTINGS.wallHintColor.hint",
     scope: "client",
     config: true,
-    type: String,
-    // Foundry 14 会用取色器渲染 `#rrggbb` 形式的字符串设置。
+    // 用 DataField 实例注册，核心配置面板才会渲染成取色器
+    // （`type: String` 会被包成普通 StringField，只给一个文本框；见 core 的 settings/config.mjs）。
+    // ColorField 是 StringField 的子类，读写仍然是 `#rrggbb` 字符串，与 getStringSetting 兼容；
+    // 万一该字段不可用则退回普通字符串输入。
+    type: getColorFieldType(),
     default: "#00e5ff"
   });
 
@@ -154,6 +157,25 @@ export function registerWallHintSettings() {
     type: Boolean,
     default: false
   });
+}
+
+/**
+ * 取用于颜色设置的字段类型：优先 `foundry.data.fields.ColorField`（配置面板渲染成取色器），
+ * 该字段不可用时退回 `String`（退化为文本框，功能不受影响）。
+ *
+ * 每次读取都新建一个字段实例——`game.settings.register` 要求 `type` 是字段**实例**
+ * 才会走 DataField 分支（core 的 `applications/settings/config.mjs`）。
+ *
+ * @returns {Function|object} 字段构造函数或字段实例
+ */
+function getColorFieldType() {
+  const ColorField = globalThis.foundry?.data?.fields?.ColorField;
+  if ( typeof ColorField !== "function" ) return String;
+  try {
+    return new ColorField({required: true, nullable: false, initial: "#00e5ff"});
+  } catch ( err ) {
+    return String;
+  }
 }
 
 /**
