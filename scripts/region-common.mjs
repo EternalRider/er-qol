@@ -24,7 +24,10 @@ export const MODULE_ID = "er-qol";
  * - 某些加载路径下（例如仅按 module.json 的 documentTypes 解析）实际存储的 type 可能是
  *   **裸子类型名** `regionLighting` / `regionWall`。
  *
- * 因此新模组必须同时注册这四类键，否则老世界里已有的 Region 行为会静默失效。
+ * 每个子类型有 3 个键，但它们**并不是同一种归属**（见 `getRegistrableTypes()`）：
+ * - `${MODULE_ID}.${subtype}`：er-qol 自己的键，永远注册、永远由 er-qol 处理；
+ * - `${owner}.${subtype}`（旧模组的精确键）：旧模组启用时让位给它，避免重复收集；
+ * - 裸 `${subtype}`：旧模组**从不**匹配它，所以旧模组启用与否都始终由 er-qol 负责。
  */
 export const LEGACY_TYPE_GROUPS = Object.freeze({
   regionLighting: Object.freeze([
@@ -83,15 +86,28 @@ const LEGACY_OWNER_MODULE = Object.freeze({
 });
 
 /**
+ * 取子类型对应的旧模组**精确** type 键（旧模组只匹配这个键）。
+ * @param {keyof typeof LEGACY_TYPE_GROUPS} subtype 子类型名
+ * @returns {string|null} 旧模组的精确 type 键
+ */
+function legacyExactType(subtype) {
+  const owner = LEGACY_OWNER_MODULE[subtype];
+  return owner ? `${owner}.${subtype}` : null;
+}
+
+/**
  * 判断某个 type 键此刻是否应该由 er-qol 处理。
  *
- * 关键：当**旧的同名模组仍然启用**时，er-qol 必须让出旧 type 键——
+ * 关键：当**旧的同名模组仍然启用**时，er-qol 必须让出旧模组的**精确** type 键——
  * 旧 `region-lighting` / `region-walls` 按精确 type 匹配自己处理一遍，
  * er-qol 若同时按别名再处理一遍，同一条 Region 行为就会被收集两次
- * （墙体边界重复、光照源重复）。而 swpt 生成的数据写的正是旧 type 键，
+ * （墙体边界重复、光照源重复）。而 swpt 生成的数据写的正是这个精确键，
  * 所以这个"让位"规则同时保证了 swpt 内容不会被重复结算。
  *
- * 规范化的 `er-qol.*` 键始终由 er-qol 处理，与旧模组是否启用无关。
+ * 两类键**不**让位：
+ * - 规范化的 `er-qol.*` 键：er-qol 自己的键；
+ * - 裸子类型名 `regionLighting` / `regionWall`：旧模组从不匹配它，
+ *   若也一起让位，这类行为会变成"两个模组都不处理"的静默失效。
  *
  * @param {string} type RegionBehavior 的 type 键
  * @param {keyof typeof LEGACY_TYPE_GROUPS} subtype 子类型名
@@ -99,14 +115,13 @@ const LEGACY_OWNER_MODULE = Object.freeze({
  */
 export function isActiveBehaviorType(type, subtype) {
   if ( !isBehaviorType(type, subtype) ) return false;
-  if ( type === `${MODULE_ID}.${subtype}` ) return true;
-  const owner = LEGACY_OWNER_MODULE[subtype];
-  if ( !owner ) return true;
-  return !globalThis.game?.modules?.get?.(owner)?.active;
+  const exact = legacyExactType(subtype);
+  if ( !exact || (type !== exact) ) return true;
+  return !isLegacyOwnerActive(subtype);
 }
 
 /**
- * 该子类型的旧模组是否正在启用（启用时 er-qol 不注册旧别名，也不处理旧键）。
+ * 该子类型的旧模组是否正在启用（启用时 er-qol 让出旧模组的精确 type 键）。
  * @param {keyof typeof LEGACY_TYPE_GROUPS} subtype 子类型名
  * @returns {boolean} 旧模组启用时返回 true
  */
@@ -116,7 +131,11 @@ export function isLegacyOwnerActive(subtype) {
 }
 
 /**
- * 取某子类型需要注册的 type 键：规范化键始终注册，旧别名只在旧模组未启用时注册。
+ * 取某子类型需要注册的 type 键。
+ *
+ * - 规范化键 `er-qol.<subtype>`：始终注册；
+ * - 裸子类型名：始终注册（旧模组不匹配它，注册不会引入重复）；
+ * - 旧模组的精确键 `<owner>.<subtype>`：只在旧模组**未启用**时注册。
  *
  * 不注册（而不是注册后用不到）能带来两个好处：行为类型下拉框不会出现
  * 无法生效的旧键；`auditTypeAliases()` 也能据此区分"预期跳过"与"真缺失"。
@@ -127,10 +146,11 @@ export function isLegacyOwnerActive(subtype) {
 export function getRegistrableTypes(subtype) {
   const all = LEGACY_TYPE_GROUPS[subtype] ?? [`${MODULE_ID}.${subtype}`];
   if ( !isLegacyOwnerActive(subtype) ) return [...all];
-  return all.filter(type => type === `${MODULE_ID}.${subtype}`);
+  const exact = legacyExactType(subtype);
+  return all.filter(type => type !== exact);
 }
 
-/** 模组 API 命名空间，挂到 `game.erqol`，供宏/其他模组调用。 */
+/** 模组 API 命名空间，挂到全局（`window.erqol`，宏里直接写 `erqol`），供宏/其他模组调用。 */
 export const erqol = {
   MODULE_ID,
   LIGHTING_TYPE,
@@ -521,6 +541,11 @@ export function updateRegionShapeConstraints(scene, affectedTypes) {
 
 /**
  * 遍历当前场景中所有属于指定子类型的 Region 行为。
+ *
+ * 注意：这里用的是**全部别名**（`isBehaviorType`），包含 er-qol 此刻让位给旧模组的键，
+ * 因此结果里可能包含由旧模组负责结算的行为。只想知道"er-qol 自己会处理哪些"时，
+ * 请另用 `isActiveBehaviorType()` 过滤。
+ *
  * @param {string} subtype 子类型名（`LEGACY_TYPE_GROUPS` 的键）
  * @returns {Array<{region: RegionDocument, behavior: RegionBehavior, system: object, type: string}>}
  *          行为描述数组

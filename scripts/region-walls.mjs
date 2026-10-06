@@ -7,8 +7,9 @@
  * - 旧文件里自带的 `elevationInRange` / `elevationRangeOverlaps` / `getProbeElevation` 已改为导入
  *   `./region-common.mjs` 的 `elevationInRegion` / `elevationRangeOverlaps` / `getProbeElevation`；
  * - 收集 Region 边界线段时改用 `getRegionPolygonEdges(region)`，不再直接读 `region.polygonTree`；
- * - 行为 type 的匹配统一走 `isBehaviorType(type, "regionWall")`，因此
- *   `region-walls.regionWall` 与裸子类型名 `regionWall` 这些兼容别名也能正常阻挡；
+ * - 行为 type 的匹配统一走 `isActiveBehaviorType(type, "regionWall")`：er-qol 自己的键与
+ *   裸子类型名 `regionWall` 一律由 er-qol 处理，旧模组的精确键 `region-walls.regionWall`
+ *   在旧模组仍启用时让位给它（避免同一条边界被两套包装各收一次）；
  * - 注册拆成两步：`registerWallBehaviorTypes()` 由 `init.mjs` 在 `Hooks.once("init")` 调用，
  *   `installWalls()` 由 `init.mjs` 在 `Hooks.on("canvasInit")` 调用；本文件不再自行挂钩子。
  *
@@ -369,7 +370,8 @@ function getWrappedBackend(PolygonBackend) {
 /**
  * 取当前场景中所有会对该类穿透生效的 Region 墙体行为。
  *
- * 行为 type 用 `isBehaviorType(type, "regionWall")` 匹配，因此兼容别名同样有效；
+ * 行为 type 用 `isActiveBehaviorType(type, "regionWall")` 匹配：er-qol 的规范化键与裸子类型名
+ * 一律有效；旧模组的精确键在旧模组启用时让位（由旧模组负责），避免重复收边。
  * 高度判定用 `elevationInRegion` / `elevationRangeOverlaps`（无目的点高度时只看起点高度）。
  *
  * @param {Scene} scene 场景
@@ -500,8 +502,8 @@ export function installWalls() {
 /**
  * 注册「Region Walls」Behavior 的 type 键。
  *
- * 规范化键 `er-qol.regionWall` 始终注册；旧模组的别名键只在
- * **旧 `region-walls` 未启用**时注册——旧模组启用时会自己处理旧键，
+ * 规范化键 `er-qol.regionWall` 与裸子类型名 `regionWall` 始终注册；旧模组的**精确**键
+ * `region-walls.regionWall` 只在旧 `region-walls` 未启用时注册——旧模组启用时会自己处理它，
  * er-qol 再注册/处理一遍会让同一条 Region 边界被收集两次。
  * `typeLabels` / `typeHints` / `typeIcons` 只写给规范化键，否则下拉框会出现重复条目。
  *

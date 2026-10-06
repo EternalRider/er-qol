@@ -491,15 +491,17 @@ Hooks.callAll("init");
 for ( const type of ["er-qol.regionLighting", "er-qol.regionWall", "er-qol.regionAnnounce", "er-qol.regionTeleport"] ) {
   assert(`dataModels 注册 ${type}`, !!CONFIG.RegionBehavior.dataModels[type]);
 }
-assert("旧模组启用时不注册旧光照别名（让位，避免重复收集）",
+assert("旧模组启用时让出旧模组的**精确**键（避免重复收集）",
   !CONFIG.RegionBehavior.dataModels["region-lighting.regionLighting"]
-  && !CONFIG.RegionBehavior.dataModels.regionLighting);
-assert("旧模组启用时不注册旧墙体别名（让位，避免重复收集）",
-  !CONFIG.RegionBehavior.dataModels["region-walls.regionWall"]
-  && !CONFIG.RegionBehavior.dataModels.regionWall);
-assert("旧模组启用时 er-qol 不处理旧 type 键",
+  && !CONFIG.RegionBehavior.dataModels["region-walls.regionWall"]);
+assert("旧模组启用时**仍**注册裸子类型键（旧模组不匹配它，否则会变成孤儿）",
+  !!CONFIG.RegionBehavior.dataModels.regionLighting && !!CONFIG.RegionBehavior.dataModels.regionWall);
+assert("旧模组启用时 er-qol 不处理旧模组的精确键（让位）",
   common.isActiveBehaviorType("region-walls.regionWall", "regionWall") === false
   && common.isActiveBehaviorType("region-lighting.regionLighting", "regionLighting") === false);
+assert("旧模组启用时 er-qol 仍处理裸子类型键（防止无人接手的静默失效）",
+  common.isActiveBehaviorType("regionWall", "regionWall") === true
+  && common.isActiveBehaviorType("regionLighting", "regionLighting") === true);
 assert("旧模组启用时仍处理规范化键",
   common.isActiveBehaviorType("er-qol.regionWall", "regionWall") === true
   && common.isActiveBehaviorType("er-qol.regionLighting", "regionLighting") === true);
@@ -521,6 +523,22 @@ for ( const type of [
 assert("旧模组停用后 er-qol 接管旧 type 键",
   common.isActiveBehaviorType("region-walls.regionWall", "regionWall") === true
   && common.isActiveBehaviorType("region-lighting.regionLighting", "regionLighting") === true);
+
+// 音效必须尊重 visibility：非 Active GM 在 chat+gm 组合下不应放提示音。
+const soundSystem = new features.RegionAnnounceBehaviorType({
+  notifyEntry: true, notifyExit: false, output: "chat", visibility: "gm",
+  entryMessage: "", exitMessage: "", sound: {enabled: true, src: "x.ogg", volume: 0.5}
+});
+makeBehavior("er-qol.regionAnnounce", soundSystem, makeRegion({name: "Quiet"}));
+const soundEvent = {name: CONST.REGION_EVENTS.TOKEN_ENTER, data: {token: makeToken({name: "Alice"})}};
+const soundCalls = [];
+globalThis.foundry.audio = {AudioHelper: {play: options => soundCalls.push(options)}};
+globalThis.game.user = PLAYER;
+soundSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(soundSystem, soundEvent);
+assert("visibility=gm 时玩家端不放提示音", soundCalls.length === 0, `实际 ${soundCalls.length}`);
+globalThis.game.user = USER;
+soundSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(soundSystem, soundEvent);
+assert("visibility=gm 时 GM 端放提示音", soundCalls.length === 1, `实际 ${soundCalls.length}`);
 
 // 后续用例按"旧模组停用"（er-qol 独立承担）运行。
 game.modules.delete("region-lighting");

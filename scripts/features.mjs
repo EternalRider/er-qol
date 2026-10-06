@@ -242,6 +242,7 @@ export class RegionAnnounceBehaviorType extends foundry.data.regionBehaviors.Reg
    * @returns {void}
    */
   #deliver(message, token) {
+    let visibleToMe = false;
     if ( this.output === "chat" ) {
       if ( isActiveGM() ) {
         const recipients = this.#getRecipients(token);
@@ -251,15 +252,16 @@ export class RegionAnnounceBehaviorType extends foundry.data.regionBehaviors.Reg
           ...(recipients ? {whisper: recipients} : {})
         });
       }
+      visibleToMe = this.#isVisibleToMe(token);
     } else {
-      const visibleToMe = this.#isVisibleToMe(token);
+      visibleToMe = this.#isVisibleToMe(token);
       if ( !visibleToMe ) return;
       ui.notifications.info(message);
     }
 
-    // 音效不受"聊天消息只由 Active GM 创建"的限制：那是为了去重消息，
-    // 而提示音本来就该在能听到的客户端各自播放。
-    playAnnounceSound(this.sound);
+    // 音效与聊天消息分开：消息只由 Active GM 创建（去重），
+    // 但提示音应该在该看到/听到这条播报的客户端各自播放，同时尊重 visibility。
+    if ( visibleToMe ) playAnnounceSound(this.sound);
   }
 
   /**

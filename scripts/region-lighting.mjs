@@ -36,8 +36,9 @@ import {
 /**
  * 规范化后的 Behavior type 键（`er-qol.regionLighting`）。
  *
- * 旧键 `region-lighting.regionLighting` 与裸子类型名 `regionLighting` 都由
- * `registerLightingBehaviorTypes()` 注册成同一个类，老世界无需迁移数据。
+ * 裸子类型名 `regionLighting` 与旧模组的精确键 `region-lighting.regionLighting`
+ * 都由 `registerLightingBehaviorTypes()` 交给 er-qol 处理（后者仅在旧模组未启用时注册），
+ * 老世界无需迁移数据。
  */
 export const TYPE = LIGHTING_TYPE;
 
@@ -852,9 +853,9 @@ export function installLighting() {
 /**
  * 注册「Region Lighting」Behavior 的 type 键。
  *
- * 规范化键 `er-qol.regionLighting` 始终注册；旧模组的别名键只在
- * **旧 `region-lighting` 未启用**时注册——旧模组启用时会自己处理旧键，
- * er-qol 再注册/处理一遍会让同一个行为产生两个光照源。
+ * 规范化键 `er-qol.regionLighting` 与裸子类型名 `regionLighting` 始终注册；旧模组的**精确**键
+ * `region-lighting.regionLighting` 只在旧 `region-lighting` 未启用时注册——旧模组启用时会自己
+ * 处理它，er-qol 再注册/处理一遍会让同一个行为产生两个光照源。
  * `typeLabels` / `typeHints` / `typeIcons` 只写给规范化键，否则下拉框会出现重复条目。
  *
  * 必须在 `Hooks.once("init")` 中调用（由 `init.mjs` 统一调用）。

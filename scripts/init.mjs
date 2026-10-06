@@ -118,7 +118,7 @@ function auditTypeAliases() {
   }
 
   erqol.registeredTypes = {canonical: {...REGISTERED_TYPES}, missing: [...new Set(missing)]};
-  return missing;
+  return erqol.registeredTypes.missing;
 }
 
 Hooks.once("init", () => {
