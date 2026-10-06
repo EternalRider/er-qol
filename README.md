@@ -68,8 +68,8 @@ Client-side settings in **Configure Settings → EternalRider's QoL**:
 
 ### 6. Wall Outlines On Other Layers *(new)*
 
-Client-side setting that draws a thin line for **every wall even when the Walls layer is not
-active**, so everyone can see where the real wall lines are while moving tokens around.
+Client-side setting that draws a thin line for **every player-visible wall even when the Walls layer
+is not active**, so everyone can see where the real wall lines are while moving tokens around.
 
 - one **uniform configurable color** (with a color picker) — deliberately *not* the Walls-layer
   colors, which would give secret doors away at a glance;

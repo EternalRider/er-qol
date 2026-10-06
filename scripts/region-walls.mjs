@@ -25,10 +25,10 @@ import {
 } from "./region-common.mjs";
 
 /**
- * 规范化后的 Behavior type 键（`er-qol.regionWall`）。
+ * 墙体 Behavior 的 type 键（`er-qol.regionWall`）。
  *
- * 旧键 `region-walls.regionWall` 与裸子类型名 `regionWall` 都由 `registerWallBehaviorTypes()`
- * 注册成同一个类并在此模块的行为匹配中生效，老世界无需迁移数据。
+ * er-qol 只用自己的命名空间：旧模组 `region-walls` 从未发布过，因此**不保留**它的
+ * `region-walls.regionWall` 或裸子类型名 `regionWall` 作为别名，也不需要数据迁移。
  */
 export const TYPE = WALL_TYPE;
 
