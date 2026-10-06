@@ -222,14 +222,27 @@ const SETTINGS = new Map([
   ["er-qol.hoverInfo", true],
   ["er-qol.teleportCooldown", 1000]
 ]);
-const USER = {id: "u1", isGM: true};
+const USER = {id: "u1", isGM: true, active: true};
+const OTHER_GM = {id: "u3", isGM: true, active: false};
+const PLAYER = {id: "u2", isGM: false, active: true};
+const USERS = [USER, OTHER_GM, PLAYER];
+Object.defineProperty(USERS, "activeGM", {get: () => USERS.find(user => user.isGM && user.active) ?? null});
+USERS.contents = USERS;
 const NOTIFICATIONS = [];
 globalThis.game = {
   user: USER,
-  users: [USER, {id: "u2", isGM: false}],
+  users: USERS,
   modules: new Map(),
   scenes: {
-    get: id => (globalThis.canvas?.scene?.id === id ? globalThis.canvas.scene : null)
+    get: id => (globalThis.canvas?.scene?.id === id ? globalThis.canvas.scene
+      : (globalThis.OTHER_SCENES?.get(id) ?? null)),
+    getName: name => {
+      if ( globalThis.canvas?.scene?.name === name ) return globalThis.canvas.scene;
+      for ( const scene of (globalThis.OTHER_SCENES?.values() ?? []) ) {
+        if ( scene.name === name ) return scene;
+      }
+      return null;
+    }
   },
   settings: {
     register: (module, key, data) => {
@@ -320,7 +333,7 @@ function makeRegion({
 function makeToken({id = "token-1", name = "Hero", x = 50, y = 50, sceneId = "scene-1"} = {}) {
   const flags = {};
   const updates = [];
-  return {
+  const token = {
     id,
     name,
     x,
@@ -341,13 +354,22 @@ function makeToken({id = "token-1", name = "Hero", x = 50, y = 50, sceneId = "sc
     },
     update: async data => {
       updates.push(data);
-      Object.assign({}, data);
+      if ( Number.isFinite(data.x) ) token.x = data.x;
+      if ( Number.isFinite(data.y) ) token.y = data.y;
+      if ( Number.isFinite(data.elevation) ) token.elevation = data.elevation;
       return true;
     },
-    toObject: () => ({_id: id, name, x, y, elevation: 0}),
+    toObject: () => ({_id: id, name, x: token.x, y: token.y, elevation: token.elevation}),
+    delete: async () => {
+      token.deleted = true;
+      return true;
+    },
+    deleted: false,
+    testInsideRegion: region => region.testPoint({x: token.x, y: token.y, elevation: token.elevation}),
     object: null,
     testUserPermission: () => true
   };
+  return token;
 }
 
 /**
@@ -458,16 +480,51 @@ assert("globalThis.erqol 已挂载", globalThis.erqol?.MODULE_ID === "er-qol");
 
 console.log("\n[3] Behavior 类型注册");
 
+// 场景一：两个旧模组**仍然启用**（swpt 用户的推荐组合）→ er-qol 让位，不注册旧别名。
+const legacyLightingMod = {id: "region-lighting", active: true};
+const legacyWallsMod = {id: "region-walls", active: true};
+game.modules.set("region-lighting", legacyLightingMod);
+game.modules.set("region-walls", legacyWallsMod);
+
 Hooks.callAll("init");
 
-const expectedAliases = [
+for ( const type of ["er-qol.regionLighting", "er-qol.regionWall", "er-qol.regionAnnounce", "er-qol.regionTeleport"] ) {
+  assert(`dataModels 注册 ${type}`, !!CONFIG.RegionBehavior.dataModels[type]);
+}
+assert("旧模组启用时不注册旧光照别名（让位，避免重复收集）",
+  !CONFIG.RegionBehavior.dataModels["region-lighting.regionLighting"]
+  && !CONFIG.RegionBehavior.dataModels.regionLighting);
+assert("旧模组启用时不注册旧墙体别名（让位，避免重复收集）",
+  !CONFIG.RegionBehavior.dataModels["region-walls.regionWall"]
+  && !CONFIG.RegionBehavior.dataModels.regionWall);
+assert("旧模组启用时 er-qol 不处理旧 type 键",
+  common.isActiveBehaviorType("region-walls.regionWall", "regionWall") === false
+  && common.isActiveBehaviorType("region-lighting.regionLighting", "regionLighting") === false);
+assert("旧模组启用时仍处理规范化键",
+  common.isActiveBehaviorType("er-qol.regionWall", "regionWall") === true
+  && common.isActiveBehaviorType("er-qol.regionLighting", "regionLighting") === true);
+assert("这类跳过不算注册缺失",
+  deepEqual(globalThis.erqol.registeredTypes.missing, []));
+
+// 场景二：两个旧模组**停用**（不用 swpt 的用户）→ er-qol 接管全部旧 type 键。
+legacyLightingMod.active = false;
+legacyWallsMod.active = false;
+Hooks.callAll("init");
+
+for ( const type of [
   "regionLighting", "region-lighting.regionLighting", "er-qol.regionLighting",
   "regionWall", "region-walls.regionWall", "er-qol.regionWall",
   "er-qol.regionAnnounce", "er-qol.regionTeleport"
-];
-for ( const type of expectedAliases ) {
-  assert(`dataModels 注册 ${type}`, !!CONFIG.RegionBehavior.dataModels[type]);
+] ) {
+  assert(`旧模组停用后 dataModels 注册 ${type}`, !!CONFIG.RegionBehavior.dataModels[type]);
 }
+assert("旧模组停用后 er-qol 接管旧 type 键",
+  common.isActiveBehaviorType("region-walls.regionWall", "regionWall") === true
+  && common.isActiveBehaviorType("region-lighting.regionLighting", "regionLighting") === true);
+
+// 后续用例按"旧模组停用"（er-qol 独立承担）运行。
+game.modules.delete("region-lighting");
+game.modules.delete("region-walls");
 
 assert("typeLabels 只给规范化键（无裸子类型键）",
   !CONFIG.RegionBehavior.typeLabels.regionWall && !CONFIG.RegionBehavior.typeLabels.regionLighting);
@@ -562,6 +619,20 @@ announceSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_EXIT].call(announceS
   {name: CONST.REGION_EVENTS.TOKEN_EXIT, data: {token: makeToken({name: "Alice"})}});
 assert("通知模式走 ui.notifications", NOTIFICATIONS.some(n => n.level === "info"));
 
+// 去重：非 Active GM 不应创建聊天消息（否则 N 个在线客户端会发出 N 条重复消息）。
+announceSystem.output = "chat";
+globalThis.game.user = OTHER_GM;
+const beforeCount = CHAT_MESSAGES.length;
+announceSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(announceSystem, enterEvent);
+assert("非 Active GM 不创建聊天消息（去重）", CHAT_MESSAGES.length === beforeCount,
+  `实际新增 ${CHAT_MESSAGES.length - beforeCount}`);
+globalThis.game.user = PLAYER;
+announceSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(announceSystem, enterEvent);
+assert("玩家客户端不创建聊天消息", CHAT_MESSAGES.length === beforeCount);
+globalThis.game.user = USER;
+announceSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(announceSystem, enterEvent);
+assert("Active GM 创建聊天消息", CHAT_MESSAGES.length === beforeCount + 1);
+
 /* -------------------------------------------------------------------------- */
 /*  6. 区域传送 Behavior                                                        */
 /* -------------------------------------------------------------------------- */
@@ -614,6 +685,47 @@ await noSceneSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(noS
   {name: CONST.REGION_EVENTS.TOKEN_ENTER, data: {token: makeToken()}});
 assert("目标场景不存在时给出警告且不传送", NOTIFICATIONS.some(n => n.level === "warn"));
 
+// 回归：目的地存在同名 Region，但 Token 并不在里面 → 不能取消传送。
+const destRegion = makeRegion({name: "Arrival", x: 1000, y: 1000, width: 50, height: 50});
+globalThis.canvas.scene.regions = [destRegion];
+const arrivalSystem = new features.RegionTeleportBehaviorType({
+  scene: "", x: 500, y: 600, elevation: 0, consume: true, notify: false,
+  message: "", destinationRegion: "Arrival"
+});
+makeBehavior("er-qol.regionTeleport", arrivalSystem, makeRegion({name: "Gate"}));
+const arrivalToken = makeToken({x: 0, y: 0});
+await arrivalSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(arrivalSystem,
+  {name: CONST.REGION_EVENTS.TOKEN_ENTER, data: {token: arrivalToken}});
+assert("同名目的地 Region 存在但 Token 不在其中时仍然传送",
+  arrivalToken.updates.length === 1, `实际 ${arrivalToken.updates.length}`);
+
+// 回归：Token 确实站在到达站点 Region 内 → 解除冷却且不再传送。
+const arrivedToken = makeToken({x: 1020, y: 1020});
+arrivedToken.flags["er-qol.teleportCooldown"] = 1234;
+arrivalToken.updates.length = 0;
+await arrivalSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(arrivalSystem,
+  {name: CONST.REGION_EVENTS.TOKEN_ENTER, data: {token: arrivedToken}});
+assert("站在到达站点内时解除冷却且不传送",
+  arrivedToken.flags["er-qol.teleportCooldown"] === undefined && arrivedToken.updates.length === 0,
+  `flag=${arrivedToken.flags["er-qol.teleportCooldown"]} updates=${arrivedToken.updates.length}`);
+
+// 回归：跨场景传送在玩家客户端必须给出明确警告，而不是静默失败。
+const otherScene = {id: "scene-2", name: "Upstairs", regions: [], created: [], createEmbeddedDocuments: async () => []};
+globalThis.OTHER_SCENES = new Map([["scene-2", otherScene]]);
+const crossSystem = new features.RegionTeleportBehaviorType({
+  scene: "scene-2", x: 10, y: 20, elevation: 0, consume: false, notify: true,
+  message: "", label: ""
+});
+makeBehavior("er-qol.regionTeleport", crossSystem, makeRegion({name: "Stairs"}));
+const crossToken = makeToken();
+globalThis.game.user = PLAYER;
+NOTIFICATIONS.length = 0;
+await crossSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(crossSystem,
+  {name: CONST.REGION_EVENTS.TOKEN_ENTER, data: {token: crossToken}});
+assert("玩家做跨场景传送时给出 GM 警告且不创建 Token",
+  NOTIFICATIONS.some(n => n.level === "warn" && /GM/i.test(String(n.message))));
+globalThis.game.user = USER;
+
 /* -------------------------------------------------------------------------- */
 /*  7. 悬停高亮                                                                 */
 /* -------------------------------------------------------------------------- */
@@ -636,7 +748,6 @@ globalThis.canvas = {
   perception: {update: () => {}},
   dimensions: {distancePixels: 100}
 };
-
 const hoverRegion = makeRegion({name: "Hovered"});
 const fakeRegionObject = {
   document: hoverRegion,

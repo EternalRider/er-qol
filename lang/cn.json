@@ -150,14 +150,14 @@
           "label": "通知文本",
           "hint": "可选。支持 {token} 与 {region} 占位符。"
         },
-        "label": {
-          "label": "目标 Region 名称",
-          "hint": "可选。填写后目标场景名必须一致，且站入同名 Region 会清除冷却。"
+        "destinationRegion": {
+          "label": "到达站点 Region 名称",
+          "hint": "可选。填写 Token 落地所在 Region 的名称；站在该 Region 内会清除冷却，避免来回弹跳。"
         }
       },
       "NOTIFY": {
         "noScene": "区域传送：找不到目标场景。",
-        "wrongScene": "区域传送：目标场景是「{scene}」，但期望「{label}」。"
+        "needGm": "区域传送：跨场景传送需要 GM 执行。"
       }
     },
     "SETTINGS": {

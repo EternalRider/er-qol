@@ -19,8 +19,8 @@
 import {
   MODULE_ID,
   LIGHTING_TYPE,
-  LEGACY_TYPE_GROUPS,
-  isBehaviorType,
+  isActiveBehaviorType,
+  getRegistrableTypes,
   getPrimaryRegionPolygon,
   getRegionRepresentativePoint,
   getRegionSamplePoints,
@@ -28,9 +28,6 @@ import {
   getRegionPolygonTree,
   getRegionBounds,
   getRegionTriangulation,
-  getRegionState,
-  computeTriangulationCentroid,
-  getFirstTrianglePoint,
   isBehaviorRenderable,
   refreshPerception,
   updateRegionShapeConstraints
@@ -819,7 +816,7 @@ function syncAllBehaviorSources() {
   if ( !canvas?.ready ) return;
   for ( const region of canvas.scene.regions ) {
     for ( const behavior of region.behaviors ) {
-      if ( !isBehaviorType(behavior.type, "regionLighting") ) continue;
+      if ( !isActiveBehaviorType(behavior.type, "regionLighting") ) continue;
       syncBehaviorSource(behavior.system);
     }
   }
@@ -842,29 +839,30 @@ export function installLighting() {
   Hooks.on("canvasReady", syncAllBehaviorSources);
   Hooks.on("deleteRegion", region => {
     for ( const behavior of region.behaviors ) {
-      if ( isBehaviorType(behavior.type, "regionLighting") ) destroyBehaviorSource(behavior);
+      if ( isActiveBehaviorType(behavior.type, "regionLighting") ) destroyBehaviorSource(behavior);
     }
   });
   Hooks.on("deleteRegionBehavior", behavior => {
-    if ( isBehaviorType(behavior.type, "regionLighting") ) destroyBehaviorSource(behavior);
+    if ( isActiveBehaviorType(behavior.type, "regionLighting") ) destroyBehaviorSource(behavior);
   });
 
   syncAllBehaviorSources();
 }
 
 /**
- * 注册「Region Lighting」Behavior 的全部 type 键。
+ * 注册「Region Lighting」Behavior 的 type 键。
  *
- * 同一个类会注册到 `LEGACY_TYPE_GROUPS.regionLighting` 的每个别名键上，
- * 但 `typeLabels` / `typeHints` / `typeIcons` 只写给规范化键，
- * 否则行为类型下拉框会出现 3 个同名条目。
+ * 规范化键 `er-qol.regionLighting` 始终注册；旧模组的别名键只在
+ * **旧 `region-lighting` 未启用**时注册——旧模组启用时会自己处理旧键，
+ * er-qol 再注册/处理一遍会让同一个行为产生两个光照源。
+ * `typeLabels` / `typeHints` / `typeIcons` 只写给规范化键，否则下拉框会出现重复条目。
  *
  * 必须在 `Hooks.once("init")` 中调用（由 `init.mjs` 统一调用）。
  *
  * @returns {void}
  */
 export function registerLightingBehaviorTypes() {
-  for ( const type of LEGACY_TYPE_GROUPS.regionLighting ) {
+  for ( const type of getRegistrableTypes("regionLighting") ) {
     CONFIG.RegionBehavior.dataModels[type] = RegionLightingBehaviorType;
   }
   CONFIG.RegionBehavior.typeLabels[LIGHTING_TYPE] = "ERQOL.REGION_LIGHTING.label";

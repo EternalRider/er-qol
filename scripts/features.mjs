@@ -232,38 +232,34 @@ export class RegionAnnounceBehaviorType extends foundry.data.regionBehaviors.Reg
 
   /**
    * 按 `output` / `visibility` 配置投递消息。
+   *
+   * **去重**：Foundry 会把 Region 事件广播给每个客户端，因此"创建聊天消息"只能由
+   * 一个客户端执行——这里限定为当前联网 GM，否则 N 个客户端会发出 N 条重复消息。
+   * 界面通知是本地的，各客户端按可见范围自己显示即可。
+   *
    * @param {string} message 已渲染的文本
    * @param {TokenDocument} token 触发事件的 Token
    * @returns {void}
    */
   #deliver(message, token) {
-    const visibility = this.visibility ?? "observers";
     if ( this.output === "chat" ) {
-      const recipients = this.#getRecipients(token);
-      ChatMessage.create({
-        content: `<p class="er-qol-region-announce">${foundry.utils.escapeHTML(message)}</p>`,
-        speaker: ChatMessage.getSpeaker({token: token.object ?? undefined}),
-        ...(recipients ? {whisper: recipients} : {})
-      });
+      if ( isActiveGM() ) {
+        const recipients = this.#getRecipients(token);
+        ChatMessage.create({
+          content: `<p class="er-qol-region-announce">${foundry.utils.escapeHTML(message)}</p>`,
+          speaker: ChatMessage.getSpeaker({token: token.object ?? undefined}),
+          ...(recipients ? {whisper: recipients} : {})
+        });
+      }
     } else {
-      if ( !this.#isVisibleToMe(token) ) return;
+      const visibleToMe = this.#isVisibleToMe(token);
+      if ( !visibleToMe ) return;
       ui.notifications.info(message);
     }
 
-    if ( this.sound?.enabled && this.sound.src ) {
-      // Foundry v13+ 走 foundry.audio.AudioHelper，旧版本仍有全局 AudioHelper。
-      const AudioHelper = globalThis.foundry?.audio?.AudioHelper ?? globalThis.AudioHelper;
-      try {
-        AudioHelper?.play?.({
-          src: this.sound.src,
-          volume: this.sound.volume ?? 0.6,
-          autoplay: true,
-          loop: false
-        }, false);
-      } catch ( err ) {
-        console.warn(`${MODULE_ID} | announce sound failed`, err);
-      }
-    }
+    // 音效不受"聊天消息只由 Active GM 创建"的限制：那是为了去重消息，
+    // 而提示音本来就该在能听到的客户端各自播放。
+    playAnnounceSound(this.sound);
   }
 
   /**
@@ -297,17 +293,23 @@ export class RegionAnnounceBehaviorType extends foundry.data.regionBehaviors.Reg
       }
     }
   }
+}
 
-  /**
-   * 兼容入口：不同 Foundry 小版本可能把事件交给 `_handleEvent`。
-   * @param {object} event 事件对象
-   * @returns {boolean|void} 处理结果
-   * @override
-   */
-  _handleEvent(event) {
-    if ( super._handleEvent ) super._handleEvent(event);
-    this.#dispatch(event);
-  }
+/**
+ * 判断当前用户是不是"当前联网的 GM"（Active GM）。
+ *
+ * 用来给聊天播报去重：Foundry 会把 Region 事件广播给每个客户端，
+ * 若每个客户端都建一条 ChatMessage，消息数会等于在线客户端数。
+ *
+ * @returns {boolean} 当前用户是 Active GM 时返回 true
+ */
+function isActiveGM() {
+  if ( !game.user?.isGM ) return false;
+  const activeGM = game.users?.activeGM ?? null;
+  if ( activeGM ) return activeGM.id === game.user.id;
+  // 退化路径：老版本/异常情况下没有任何 activeGM 标记时，只认第一个 GM。
+  const firstGM = (game.users?.contents ?? []).find(user => user.isGM);
+  return !firstGM || (firstGM.id === game.user.id);
 }
 
 /**
@@ -378,12 +380,12 @@ export class RegionTeleportBehaviorType extends foundry.data.regionBehaviors.Reg
         label: "ERQOL.REGION_TELEPORT.FIELDS.message.label",
         hint: "ERQOL.REGION_TELEPORT.FIELDS.message.hint"
       }),
-      label: new StringField({
+      destinationRegion: new StringField({
         required: true,
         blank: true,
         initial: "",
-        label: "ERQOL.REGION_TELEPORT.FIELDS.label.label",
-        hint: "ERQOL.REGION_TELEPORT.FIELDS.label.hint"
+        label: "ERQOL.REGION_TELEPORT.FIELDS.destinationRegion.label",
+        hint: "ERQOL.REGION_TELEPORT.FIELDS.destinationRegion.hint"
       })
     };
   }
@@ -403,20 +405,6 @@ export class RegionTeleportBehaviorType extends foundry.data.regionBehaviors.Reg
   }
 
   /**
-   * 判断 Token 是否落在目的地 Region 内，用于到达站点自动解除冷却。
-   * @returns {boolean} 在目的地 Region 内返回 true
-   */
-  #isInsideDestinationRegion() {
-    const label = (this.label ?? "").trim();
-    if ( !label || !canvas?.ready ) return false;
-    for ( const region of canvas.scene.regions ) {
-      if ( region.name !== label ) continue;
-      return true;
-    }
-    return false;
-  }
-
-  /**
    * 执行一次传送尝试。
    * @param {object} event 事件对象
    * @returns {Promise<void>} 完成后的 Promise
@@ -430,24 +418,23 @@ export class RegionTeleportBehaviorType extends foundry.data.regionBehaviors.Reg
     const cooldown = Math.max(0, getNumberSetting(SETTINGS.TELEPORT_COOLDOWN, 1000));
     const last = Number(token.getFlag?.(MODULE_ID, TELEPORT_COOLDOWN_FLAG) ?? 0);
 
-    // 已经站在目的地 Region 里 → 解除冷却，避免来回弹跳。
-    if ( this.consume && this.#isInsideDestinationRegion() ) {
+    const targetScene = this.scene ? game.scenes?.get(this.scene) : canvas.scene;
+    const destinationRegion = (this.destinationRegion ?? "").trim();
+
+    // 到达站点判定要放在冷却判断之前：若是刚被传送到站点上，先解除冷却，不要再触发下一次传送。
+    // 只有"Token 真的站在到达站点 Region 内"才提前返回；仅仅存在同名 Region 不算。
+    // 并且只在**同场景**时判定：跨场景时 Token 的坐标还留在原场景，
+    // 拿它去测目标场景的同名 Region 会误判成"已到达"从而取消传送。
+    const sameScene = !!targetScene && (token.parent?.id === targetScene.id);
+    if ( this.consume && sameScene && findDestinationRegion(targetScene, token, destinationRegion) ) {
       if ( last ) await token.unsetFlag(MODULE_ID, TELEPORT_COOLDOWN_FLAG);
       return;
     }
     if ( last && ((Date.now() - last) < cooldown) ) return;
 
-    const targetScene = this.scene ? game.scenes?.get(this.scene) : canvas.scene;
     if ( !targetScene ) {
       ui.notifications.warn(localize("ERQOL.REGION_TELEPORT.NOTIFY.noScene",
         "Region Teleport: destination scene not found."));
-      return;
-    }
-
-    const label = (this.label ?? "").trim();
-    if ( label && (targetScene.name !== label) ) {
-      ui.notifications.warn(format("ERQOL.REGION_TELEPORT.NOTIFY.wrongScene",
-        {label, scene: targetScene.name}));
       return;
     }
 
@@ -459,6 +446,13 @@ export class RegionTeleportBehaviorType extends foundry.data.regionBehaviors.Reg
 
     // 跨场景：删除原 Token 并在目标场景创建一份新的。
     if ( token.parent?.id !== targetScene.id ) {
+      // 创建 Token 需要 TOKEN_CREATE 权限（默认只有 ASSISTANT/GM 有），玩家客户端做不到，
+      // 因此这里只对 GM 生效；否则给出明确提示，而不是静默失败。
+      if ( !game.user?.isGM ) {
+        ui.notifications.warn(localize("ERQOL.REGION_TELEPORT.NOTIFY.needGm",
+          "Region Teleport: changing scene requires the GM."));
+        return;
+      }
       const createData = token.toObject();
       delete createData._id;
       createData.x = this.x;
@@ -477,25 +471,66 @@ export class RegionTeleportBehaviorType extends foundry.data.regionBehaviors.Reg
     if ( cooldown > 0 ) {
       await token.setFlag(MODULE_ID, TELEPORT_COOLDOWN_FLAG, Date.now());
       if ( this.consume ) {
+        // 兜底：若到达站点判定没能解除冷却，冷却结束后自动清掉，避免 Token 被永久锁死。
         setTimeout(() => {
           token.unsetFlag(MODULE_ID, TELEPORT_COOLDOWN_FLAG).catch(() => {});
         }, Math.max(250, cooldown));
       }
     }
-
     _notifyTeleport(this.notify, message, token);
   }
+}
 
-  /**
-   * 兼容入口：不同 Foundry 小版本可能把事件交给 `_handleEvent`。
-   * @param {object} event 事件对象
-   * @returns {boolean|void} 处理结果
-   * @override
-   */
-  _handleEvent(event) {
-    if ( super._handleEvent ) super._handleEvent(event);
-    this.#dispatch(event);
+/**
+ * 播放 Announce 配置的提示音（若启用）。
+ *
+ * 与聊天消息分开处理：聊天消息只由 Active GM 创建（去重），
+ * 但提示音应该在每个"能收到这条播报"的客户端各自播放。
+ *
+ * @param {object} sound `system.sound`，含 `enabled` / `src` / `volume`
+ * @returns {void}
+ */
+function playAnnounceSound(sound) {
+  if ( !sound?.enabled || !sound.src ) return;
+  // Foundry v13+ 走 foundry.audio.AudioHelper，旧版本仍有全局 AudioHelper。
+  const AudioHelper = globalThis.foundry?.audio?.AudioHelper ?? globalThis.AudioHelper;
+  try {
+    AudioHelper?.play?.({
+      src: sound.src,
+      volume: sound.volume ?? 0.6,
+      autoplay: true,
+      loop: false
+    }, false);
+  } catch ( err ) {
+    console.warn(`${MODULE_ID} | announce sound failed`, err);
   }
+}
+
+/**
+ * 在目的地场景里按名字查找"到达站点 Region"，并确认 Token 确实站在它里面。
+ *
+ * 只按名字存在性判断是不够的——那会把"场景里恰好有同名 Region"误判成"已经到达"，
+ * 从而把正常的传送静默取消。因此这里优先用 `TokenDocument#testInsideRegion()`，
+ * 退化时用 Region 的 `testPoint()` 加 Token 当前坐标判断。
+ *
+ * @param {Scene} destinationScene 目的地场景
+ * @param {TokenDocument} token 被传送的 Token
+ * @param {string} regionName 到达站点 Region 的名称
+ * @returns {RegionDocument|null} 命中的到达站点 Region，未命中为 null
+ */
+function findDestinationRegion(destinationScene, token, regionName) {
+  if ( !regionName || !destinationScene?.regions ) return null;
+
+  for ( const region of destinationScene.regions ) {
+    if ( region.name !== regionName ) continue;
+    if ( typeof token.testInsideRegion === "function" ) {
+      if ( token.testInsideRegion(region) ) return region;
+      continue;
+    }
+    const point = {x: token.x, y: token.y, elevation: token.elevation ?? 0};
+    if ( region.testPoint?.(point) ) return region;
+  }
+  return null;
 }
 
 /**
@@ -630,7 +665,7 @@ function showRegionInfo(region, event) {
     `<div>${localize("ERQOL.INFO.behaviors", "Behaviors")}: ${behaviorNames.length
       ? foundry.utils.escapeHTML(behaviorNames.join(", ")) : "-"}</div>`,
     `<div>${localize("ERQOL.INFO.elevation", "Elevation")}: ${elevation.bottom ?? "-"} ~ ${elevation.top ?? "-"}</div>`,
-    `<div>${localize("ERQOL.INFO.shapes", "Shapes")}: ${getRegionPolygonTree(region).length}</div>`,
+    `<div>${localize("ERQOL.INFO.shapes", "Shapes")}: ${[...getRegionPolygonTree(region)].length}</div>`,
     `</div>`
   ].join("");
 
@@ -648,19 +683,6 @@ function showRegionInfo(region, event) {
 function bindRegionHover(regionObject) {
   if ( !regionObject || boundRegionObjects.has(regionObject) ) return;
 
-  /** 从事件里解析指针的 canvas 坐标。 */
-  const pointerToCanvas = event => {
-    const global = event?.global ?? event?.data?.global;
-    if ( global ) return canvas.canvasCoordinatesFromClient
-      ? canvas.canvasCoordinatesFromClient(global) : global;
-    const client = event?.data?.originalEvent ?? event;
-    if ( client && ("clientX" in client) && canvas.clientCoordinatesFromCanvas ) {
-      const local = canvas.clientCoordinatesFromCanvas({x: client.clientX, y: client.clientY});
-      return local ?? {x: 0, y: 0};
-    }
-    return null;
-  };
-
   const onOver = event => {
     const region = regionObject.document;
     if ( !region ) return;
@@ -672,12 +694,16 @@ function bindRegionHover(regionObject) {
     clearHighlight();
   };
 
-  regionObject.eventMode = "static";
+  // 只监听 pointer* 事件：本机 Foundry 打包的 PIXI 7.4.3 对鼠标/触控笔会**同时**派发
+  // 等价的 mouse* 事件，两个都绑会导致一次悬停触发两遍（区域信息重复弹出）。
   regionObject.on("pointerover", onOver);
   regionObject.on("pointerout", onOut);
-  // PIXI v8 的 FederatedEvent 在部分版本里仍以 mouseover 命名派发，双保险。
-  regionObject.on("mouseover", onOver);
-  regionObject.on("mouseout", onOut);
+
+  // Region 对象默认 `eventMode` 由核心按 `isInteractable` 管理；只有在它明确不可交互时
+  // 才补一次，既保证我们的悬停回调能收到事件，又不去覆盖核心的状态机。
+  if ( (regionObject.eventMode === "none") || (regionObject.eventMode === undefined) ) {
+    regionObject.eventMode = "static";
+  }
 
   boundRegionObjects.add(regionObject);
 }

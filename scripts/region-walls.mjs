@@ -17,8 +17,8 @@
 
 import {
   WALL_TYPE,
-  LEGACY_TYPE_GROUPS,
-  isBehaviorType,
+  isActiveBehaviorType,
+  getRegistrableTypes,
   getRegionPolygonEdges,
   elevationInRegion,
   elevationRangeOverlaps,
@@ -384,7 +384,7 @@ function getActiveRegionWallBehaviors(scene, level, type, originElevation, desti
   for ( const region of scene.regions ) {
     if ( !region.includedInLevel(level) ) continue;
     for ( const behavior of region.behaviors ) {
-      if ( !behavior.active || !isBehaviorType(behavior.type, "regionWall") ) continue;
+      if ( !behavior.active || !isActiveBehaviorType(behavior.type, "regionWall") ) continue;
       if ( !behavior.system.blocks?.(type) ) continue;
       if ( destinationElevation === undefined ) {
         if ( !elevationInRegion(region, originElevation) ) continue;
@@ -479,7 +479,7 @@ function segmentIntersectsRectangle(a, b, rectangle) {
 let wallsInstalled = false;
 
 /**
- * 包装全部 PolygonBackend，让 Region 边界参与碰撞检测。
+ * 包装 PolygonBackend，让 Region 边界参与碰撞检测。
  *
  * 由 `init.mjs` 在 `Hooks.on("canvasInit")` 中调用（必须在画布初始化时安装）；
  * 重复调用是幂等的：`getWrappedBackend()` 对同一个原始类只会包装一次。
@@ -498,18 +498,19 @@ export function installWalls() {
 }
 
 /**
- * 注册「Region Walls」Behavior 的全部 type 键。
+ * 注册「Region Walls」Behavior 的 type 键。
  *
- * 同一个类会注册到 `LEGACY_TYPE_GROUPS.regionWall` 的每个别名键上，
- * 但 `typeLabels` / `typeHints` / `typeIcons` 只写给规范化键，
- * 否则行为类型下拉框会出现 3 个同名条目。
+ * 规范化键 `er-qol.regionWall` 始终注册；旧模组的别名键只在
+ * **旧 `region-walls` 未启用**时注册——旧模组启用时会自己处理旧键，
+ * er-qol 再注册/处理一遍会让同一条 Region 边界被收集两次。
+ * `typeLabels` / `typeHints` / `typeIcons` 只写给规范化键，否则下拉框会出现重复条目。
  *
  * 必须在 `Hooks.once("init")` 中调用（由 `init.mjs` 统一调用）。
  *
  * @returns {void}
  */
 export function registerWallBehaviorTypes() {
-  for ( const type of LEGACY_TYPE_GROUPS.regionWall ) {
+  for ( const type of getRegistrableTypes("regionWall") ) {
     CONFIG.RegionBehavior.dataModels[type] = RegionWallBehaviorType;
   }
   CONFIG.RegionBehavior.typeLabels[WALL_TYPE] = "ERQOL.REGION_WALLS.label";

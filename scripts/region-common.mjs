@@ -13,9 +13,6 @@
 /** 模组 id。必须与 module.json 的 `id`、目录名保持一致。 */
 export const MODULE_ID = "er-qol";
 
-/** RegionBehavior 子类型名前缀：完整 type 键形如 `er-qol.regionLighting`。 */
-export const SUBTYPE_PREFIX = `${MODULE_ID}.`;
-
 /**
  * 旧模组的 type 键 → 新模组 type 键的兼容映射。
  *
@@ -79,6 +76,60 @@ export function isBehaviorType(type, subtype) {
   return (LEGACY_TYPE_GROUPS[subtype] ?? []).includes(type);
 }
 
+/** 子类型 → 取代它的旧模组 id。 */
+const LEGACY_OWNER_MODULE = Object.freeze({
+  regionLighting: "region-lighting",
+  regionWall: "region-walls"
+});
+
+/**
+ * 判断某个 type 键此刻是否应该由 er-qol 处理。
+ *
+ * 关键：当**旧的同名模组仍然启用**时，er-qol 必须让出旧 type 键——
+ * 旧 `region-lighting` / `region-walls` 按精确 type 匹配自己处理一遍，
+ * er-qol 若同时按别名再处理一遍，同一条 Region 行为就会被收集两次
+ * （墙体边界重复、光照源重复）。而 swpt 生成的数据写的正是旧 type 键，
+ * 所以这个"让位"规则同时保证了 swpt 内容不会被重复结算。
+ *
+ * 规范化的 `er-qol.*` 键始终由 er-qol 处理，与旧模组是否启用无关。
+ *
+ * @param {string} type RegionBehavior 的 type 键
+ * @param {keyof typeof LEGACY_TYPE_GROUPS} subtype 子类型名
+ * @returns {boolean} 应由 er-qol 处理时返回 true
+ */
+export function isActiveBehaviorType(type, subtype) {
+  if ( !isBehaviorType(type, subtype) ) return false;
+  if ( type === `${MODULE_ID}.${subtype}` ) return true;
+  const owner = LEGACY_OWNER_MODULE[subtype];
+  if ( !owner ) return true;
+  return !globalThis.game?.modules?.get?.(owner)?.active;
+}
+
+/**
+ * 该子类型的旧模组是否正在启用（启用时 er-qol 不注册旧别名，也不处理旧键）。
+ * @param {keyof typeof LEGACY_TYPE_GROUPS} subtype 子类型名
+ * @returns {boolean} 旧模组启用时返回 true
+ */
+export function isLegacyOwnerActive(subtype) {
+  const owner = LEGACY_OWNER_MODULE[subtype];
+  return !!owner && !!globalThis.game?.modules?.get?.(owner)?.active;
+}
+
+/**
+ * 取某子类型需要注册的 type 键：规范化键始终注册，旧别名只在旧模组未启用时注册。
+ *
+ * 不注册（而不是注册后用不到）能带来两个好处：行为类型下拉框不会出现
+ * 无法生效的旧键；`auditTypeAliases()` 也能据此区分"预期跳过"与"真缺失"。
+ *
+ * @param {keyof typeof LEGACY_TYPE_GROUPS} subtype 子类型名
+ * @returns {string[]} 需要注册的 type 键
+ */
+export function getRegistrableTypes(subtype) {
+  const all = LEGACY_TYPE_GROUPS[subtype] ?? [`${MODULE_ID}.${subtype}`];
+  if ( !isLegacyOwnerActive(subtype) ) return [...all];
+  return all.filter(type => type === `${MODULE_ID}.${subtype}`);
+}
+
 /** 模组 API 命名空间，挂到 `game.erqol`，供宏/其他模组调用。 */
 export const erqol = {
   MODULE_ID,
@@ -87,7 +138,11 @@ export const erqol = {
   LEGACY_TYPE_GROUPS,
   LEGACY_TYPE_ALIASES,
   normalizeBehaviorType,
-  isBehaviorType
+  isBehaviorType,
+  isActiveBehaviorType,
+  isLegacyOwnerActive,
+  getRegistrableTypes,
+  getBehaviorsBySubtype: (...args) => getBehaviorsBySubtype(...args)
 };
 
 globalThis.erqol = erqol;

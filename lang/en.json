@@ -150,14 +150,14 @@
           "label": "Notify Message",
           "hint": "Optional. Supports {token} and {region}."
         },
-        "label": {
-          "label": "Destination Region Name",
-          "hint": "Optional. When set, the destination scene name must match and standing inside a Region with this name clears the cooldown."
+        "destinationRegion": {
+          "label": "Arrival Region Name",
+          "hint": "Optional. Name of the Region the token lands in. Standing inside that Region on the destination scene clears the cooldown."
         }
       },
       "NOTIFY": {
         "noScene": "Region Teleport: destination scene was not found.",
-        "wrongScene": "Region Teleport: destination scene is \"{scene}\", expected \"{label}\"."
+        "needGm": "Region Teleport: changing scene requires the GM."
       }
     },
     "SETTINGS": {
