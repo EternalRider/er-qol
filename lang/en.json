@@ -172,6 +172,32 @@
       "teleportCooldown": {
         "name": "Teleport Cooldown (ms)",
         "hint": "How long a token is immune to Region Teleport after being teleported. Set to 0 to disable."
+      },
+      "wallHint": {
+        "name": "Wall Outlines On Other Layers",
+        "hint": "Draw a thin line for every wall even when the Walls layer is not active, so players can see where the real wall lines are. Uses one uniform color instead of the per-type wall colors, so secret doors are not revealed."
+      },
+      "wallHintColor": {
+        "name": "Wall Outline Color",
+        "hint": "Uniform color used for the wall outline hints. Deliberately not the Walls-layer color, which would give secret doors away."
+      },
+      "wallHintWidth": {
+        "name": "Wall Outline Width",
+        "hint": "Line width in pixels at the current UI scale."
+      },
+      "wallHintOpacity": {
+        "name": "Wall Outline Opacity",
+        "hint": "Opacity of the wall outline hints."
+      },
+      "wallHintScope": {
+        "name": "When To Show Wall Outlines",
+        "hint": "Other Layers hides the hints while the Walls layer is active (you already see the real walls there); Always keeps them visible.",
+        "otherLayers": "Only On Other Layers",
+        "always": "Always"
+      },
+      "wallHintShowSecret": {
+        "name": "Include Secret Doors",
+        "hint": "Also draw the outline hint for secret doors. Off by default: the hint would reveal them to players."
       }
     },
     "INFO": {

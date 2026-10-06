@@ -19,8 +19,7 @@
 import {
   MODULE_ID,
   LIGHTING_TYPE,
-  isActiveBehaviorType,
-  getRegistrableTypes,
+  isBehaviorType,
   getPrimaryRegionPolygon,
   getRegionRepresentativePoint,
   getRegionSamplePoints,
@@ -34,11 +33,10 @@ import {
 } from "./region-common.mjs";
 
 /**
- * 规范化后的 Behavior type 键（`er-qol.regionLighting`）。
+ * 光照 / 黑暗 Behavior 的 type 键（`er-qol.regionLighting`）。
  *
- * 裸子类型名 `regionLighting` 与旧模组的精确键 `region-lighting.regionLighting`
- * 都由 `registerLightingBehaviorTypes()` 交给 er-qol 处理（后者仅在旧模组未启用时注册），
- * 老世界无需迁移数据。
+ * er-qol 不保留旧模组 `region-lighting` 的 type 键兼容别名：该模组从未发布过，
+ * 因此不需要迁移数据，全部行为统一使用 er-qol 自己的命名空间。
  */
 export const TYPE = LIGHTING_TYPE;
 
@@ -817,7 +815,7 @@ function syncAllBehaviorSources() {
   if ( !canvas?.ready ) return;
   for ( const region of canvas.scene.regions ) {
     for ( const behavior of region.behaviors ) {
-      if ( !isActiveBehaviorType(behavior.type, "regionLighting") ) continue;
+      if ( !isBehaviorType(behavior.type, "regionLighting") ) continue;
       syncBehaviorSource(behavior.system);
     }
   }
@@ -840,11 +838,11 @@ export function installLighting() {
   Hooks.on("canvasReady", syncAllBehaviorSources);
   Hooks.on("deleteRegion", region => {
     for ( const behavior of region.behaviors ) {
-      if ( isActiveBehaviorType(behavior.type, "regionLighting") ) destroyBehaviorSource(behavior);
+      if ( isBehaviorType(behavior.type, "regionLighting") ) destroyBehaviorSource(behavior);
     }
   });
   Hooks.on("deleteRegionBehavior", behavior => {
-    if ( isActiveBehaviorType(behavior.type, "regionLighting") ) destroyBehaviorSource(behavior);
+    if ( isBehaviorType(behavior.type, "regionLighting") ) destroyBehaviorSource(behavior);
   });
 
   syncAllBehaviorSources();
@@ -853,19 +851,15 @@ export function installLighting() {
 /**
  * 注册「Region Lighting」Behavior 的 type 键。
  *
- * 规范化键 `er-qol.regionLighting` 与裸子类型名 `regionLighting` 始终注册；旧模组的**精确**键
- * `region-lighting.regionLighting` 只在旧 `region-lighting` 未启用时注册——旧模组启用时会自己
- * 处理它，er-qol 再注册/处理一遍会让同一个行为产生两个光照源。
- * `typeLabels` / `typeHints` / `typeIcons` 只写给规范化键，否则下拉框会出现重复条目。
+ * 只注册 er-qol 自己的 `er-qol.regionLighting`（不保留旧模组的 type 键别名，
+ * 旧模组从未发布过、不需要数据迁移）。
  *
  * 必须在 `Hooks.once("init")` 中调用（由 `init.mjs` 统一调用）。
  *
  * @returns {void}
  */
 export function registerLightingBehaviorTypes() {
-  for ( const type of getRegistrableTypes("regionLighting") ) {
-    CONFIG.RegionBehavior.dataModels[type] = RegionLightingBehaviorType;
-  }
+  CONFIG.RegionBehavior.dataModels[LIGHTING_TYPE] = RegionLightingBehaviorType;
   CONFIG.RegionBehavior.typeLabels[LIGHTING_TYPE] = "ERQOL.REGION_LIGHTING.label";
   CONFIG.RegionBehavior.typeHints[LIGHTING_TYPE] = "ERQOL.REGION_LIGHTING.hint";
   CONFIG.RegionBehavior.typeIcons[LIGHTING_TYPE] = "fa-solid fa-lightbulb";

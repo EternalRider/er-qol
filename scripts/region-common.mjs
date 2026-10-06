@@ -1,8 +1,13 @@
 /**
  * er-qol 共享工具模块。
  *
- * 本文件收纳 region-lighting 与 region-walls 原先各自复制的一份 Region 几何/高度工具函数
+ * 本文件收纳原先 `region-lighting` / `region-walls` 各自复制的一份 Region 几何/高度工具函数
  * （原先两处共约 120 行重复代码），以及若干跨 Behavior 复用的辅助函数。
+ *
+ * 命名约定：er-qol 是一个**全新模组**，Region Behavior 的 type 键一律使用自己的命名空间
+ * （`er-qol.regionLighting` / `er-qol.regionWall` / `er-qol.regionAnnounce` /
+ * `er-qol.regionTeleport`），**不保留**旧模组的 type 键兼容别名——
+ * 旧的两个模组从未发布过，接受其数据失效。
  *
  * 约定：**本文件不依赖任何 Behavior 类**，只依赖 Foundry 全局对象（canvas / CONST / PIXI 等），
  * 因此可以被任意子模块安全导入。
@@ -13,141 +18,29 @@
 /** 模组 id。必须与 module.json 的 `id`、目录名保持一致。 */
 export const MODULE_ID = "er-qol";
 
-/**
- * 旧模组的 type 键 → 新模组 type 键的兼容映射。
- *
- * 历史背景：
- * - `region-lighting` 与 `region-walls` 各自把 RegionBehavior 注册成
- *   `region-lighting.regionLighting` / `region-walls.regionWall`；
- * - swpt 的 `scripts/api.js`（`buildRegionLightingData` / `buildRegionWallData`）会把这两个
- *   字面量直接写进 Region 数据，且 swpt 已冻结不再修改；
- * - 某些加载路径下（例如仅按 module.json 的 documentTypes 解析）实际存储的 type 可能是
- *   **裸子类型名** `regionLighting` / `regionWall`。
- *
- * 每个子类型有 3 个键，但它们**并不是同一种归属**（见 `getRegistrableTypes()`）：
- * - `${MODULE_ID}.${subtype}`：er-qol 自己的键，永远注册、永远由 er-qol 处理；
- * - `${owner}.${subtype}`（旧模组的精确键）：旧模组启用时让位给它，避免重复收集；
- * - 裸 `${subtype}`：旧模组**从不**匹配它，所以旧模组启用与否都始终由 er-qol 负责。
- */
-export const LEGACY_TYPE_GROUPS = Object.freeze({
-  regionLighting: Object.freeze([
-    "regionLighting",
-    "region-lighting.regionLighting",
-    `${MODULE_ID}.regionLighting`
-  ]),
-  regionWall: Object.freeze([
-    "regionWall",
-    "region-walls.regionWall",
-    `${MODULE_ID}.regionWall`
-  ])
-});
-
-/**
- * 兼容别名：旧模组 type 键 → er-qol 规范化 type 键。
- * @type {Readonly<Record<string, string>>}
- */
-export const LEGACY_TYPE_ALIASES = Object.freeze({
-  "regionLighting": `${MODULE_ID}.regionLighting`,
-  "region-lighting.regionLighting": `${MODULE_ID}.regionLighting`,
-  "regionWall": `${MODULE_ID}.regionWall`,
-  "region-walls.regionWall": `${MODULE_ID}.regionWall`
-});
-
-/** 规范化后的光照 Behavior type 键。 */
+/** 光照 / 黑暗 Behavior 的 type 键。 */
 export const LIGHTING_TYPE = `${MODULE_ID}.regionLighting`;
 
-/** 规范化后的墙体 Behavior type 键。 */
+/** 墙体 Behavior 的 type 键。 */
 export const WALL_TYPE = `${MODULE_ID}.regionWall`;
 
-/**
- * 把任意历史 type 键归一化成 er-qol 的规范化 type 键。
- * 非 Region Behavior 的 type 原样返回。
- * @param {string} type 待归一化的 type 键
- * @returns {string} 归一化后的 type 键
- */
-export function normalizeBehaviorType(type) {
-  return LEGACY_TYPE_ALIASES[type] ?? type;
-}
+/** 本模组 Region Behavior 子类型名清单（与 `module.json` 的 `documentTypes` 一一对应）。 */
+export const BEHAVIOR_SUBTYPES = Object.freeze([
+  "regionLighting",
+  "regionWall",
+  "regionAnnounce",
+  "regionTeleport"
+]);
 
 /**
- * 判断一个 type 键是否属于某个子类型（含所有历史别名）。
+ * 判断一个 type 键是否属于本模组的某个子类型。
+ *
  * @param {string} type RegionBehavior 的 type 键
- * @param {keyof typeof LEGACY_TYPE_GROUPS} subtype 子类型名（如 `"regionLighting"`）
+ * @param {string} subtype 子类型名（如 `"regionWall"`）
  * @returns {boolean} 命中返回 true
  */
 export function isBehaviorType(type, subtype) {
-  return (LEGACY_TYPE_GROUPS[subtype] ?? []).includes(type);
-}
-
-/** 子类型 → 取代它的旧模组 id。 */
-const LEGACY_OWNER_MODULE = Object.freeze({
-  regionLighting: "region-lighting",
-  regionWall: "region-walls"
-});
-
-/**
- * 取子类型对应的旧模组**精确** type 键（旧模组只匹配这个键）。
- * @param {keyof typeof LEGACY_TYPE_GROUPS} subtype 子类型名
- * @returns {string|null} 旧模组的精确 type 键
- */
-function legacyExactType(subtype) {
-  const owner = LEGACY_OWNER_MODULE[subtype];
-  return owner ? `${owner}.${subtype}` : null;
-}
-
-/**
- * 判断某个 type 键此刻是否应该由 er-qol 处理。
- *
- * 关键：当**旧的同名模组仍然启用**时，er-qol 必须让出旧模组的**精确** type 键——
- * 旧 `region-lighting` / `region-walls` 按精确 type 匹配自己处理一遍，
- * er-qol 若同时按别名再处理一遍，同一条 Region 行为就会被收集两次
- * （墙体边界重复、光照源重复）。而 swpt 生成的数据写的正是这个精确键，
- * 所以这个"让位"规则同时保证了 swpt 内容不会被重复结算。
- *
- * 两类键**不**让位：
- * - 规范化的 `er-qol.*` 键：er-qol 自己的键；
- * - 裸子类型名 `regionLighting` / `regionWall`：旧模组从不匹配它，
- *   若也一起让位，这类行为会变成"两个模组都不处理"的静默失效。
- *
- * @param {string} type RegionBehavior 的 type 键
- * @param {keyof typeof LEGACY_TYPE_GROUPS} subtype 子类型名
- * @returns {boolean} 应由 er-qol 处理时返回 true
- */
-export function isActiveBehaviorType(type, subtype) {
-  if ( !isBehaviorType(type, subtype) ) return false;
-  const exact = legacyExactType(subtype);
-  if ( !exact || (type !== exact) ) return true;
-  return !isLegacyOwnerActive(subtype);
-}
-
-/**
- * 该子类型的旧模组是否正在启用（启用时 er-qol 让出旧模组的精确 type 键）。
- * @param {keyof typeof LEGACY_TYPE_GROUPS} subtype 子类型名
- * @returns {boolean} 旧模组启用时返回 true
- */
-export function isLegacyOwnerActive(subtype) {
-  const owner = LEGACY_OWNER_MODULE[subtype];
-  return !!owner && !!globalThis.game?.modules?.get?.(owner)?.active;
-}
-
-/**
- * 取某子类型需要注册的 type 键。
- *
- * - 规范化键 `er-qol.<subtype>`：始终注册；
- * - 裸子类型名：始终注册（旧模组不匹配它，注册不会引入重复）；
- * - 旧模组的精确键 `<owner>.<subtype>`：只在旧模组**未启用**时注册。
- *
- * 不注册（而不是注册后用不到）能带来两个好处：行为类型下拉框不会出现
- * 无法生效的旧键；`auditTypeAliases()` 也能据此区分"预期跳过"与"真缺失"。
- *
- * @param {keyof typeof LEGACY_TYPE_GROUPS} subtype 子类型名
- * @returns {string[]} 需要注册的 type 键
- */
-export function getRegistrableTypes(subtype) {
-  const all = LEGACY_TYPE_GROUPS[subtype] ?? [`${MODULE_ID}.${subtype}`];
-  if ( !isLegacyOwnerActive(subtype) ) return [...all];
-  const exact = legacyExactType(subtype);
-  return all.filter(type => type !== exact);
+  return type === `${MODULE_ID}.${subtype}`;
 }
 
 /** 模组 API 命名空间，挂到全局（`window.erqol`，宏里直接写 `erqol`），供宏/其他模组调用。 */
@@ -155,13 +48,8 @@ export const erqol = {
   MODULE_ID,
   LIGHTING_TYPE,
   WALL_TYPE,
-  LEGACY_TYPE_GROUPS,
-  LEGACY_TYPE_ALIASES,
-  normalizeBehaviorType,
+  BEHAVIOR_SUBTYPES,
   isBehaviorType,
-  isActiveBehaviorType,
-  isLegacyOwnerActive,
-  getRegistrableTypes,
   getBehaviorsBySubtype: (...args) => getBehaviorsBySubtype(...args)
 };
 
@@ -542,11 +430,7 @@ export function updateRegionShapeConstraints(scene, affectedTypes) {
 /**
  * 遍历当前场景中所有属于指定子类型的 Region 行为。
  *
- * 注意：这里用的是**全部别名**（`isBehaviorType`），包含 er-qol 此刻让位给旧模组的键，
- * 因此结果里可能包含由旧模组负责结算的行为。只想知道"er-qol 自己会处理哪些"时，
- * 请另用 `isActiveBehaviorType()` 过滤。
- *
- * @param {string} subtype 子类型名（`LEGACY_TYPE_GROUPS` 的键）
+ * @param {string} subtype 子类型名（如 `"regionWall"`）
  * @returns {Array<{region: RegionDocument, behavior: RegionBehavior, system: object, type: string}>}
  *          行为描述数组
  */

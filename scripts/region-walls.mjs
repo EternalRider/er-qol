@@ -7,9 +7,8 @@
  * - 旧文件里自带的 `elevationInRange` / `elevationRangeOverlaps` / `getProbeElevation` 已改为导入
  *   `./region-common.mjs` 的 `elevationInRegion` / `elevationRangeOverlaps` / `getProbeElevation`；
  * - 收集 Region 边界线段时改用 `getRegionPolygonEdges(region)`，不再直接读 `region.polygonTree`；
- * - 行为 type 的匹配统一走 `isActiveBehaviorType(type, "regionWall")`：er-qol 自己的键与
- *   裸子类型名 `regionWall` 一律由 er-qol 处理，旧模组的精确键 `region-walls.regionWall`
- *   在旧模组仍启用时让位给它（避免同一条边界被两套包装各收一次）；
+ * - 行为 type 的匹配统一走 `isBehaviorType(type, "regionWall")`，只认 er-qol 自己的
+ *   `er-qol.regionWall`（旧模组 `region-walls` 从未发布，不保留其 type 键别名）；
  * - 注册拆成两步：`registerWallBehaviorTypes()` 由 `init.mjs` 在 `Hooks.once("init")` 调用，
  *   `installWalls()` 由 `init.mjs` 在 `Hooks.on("canvasInit")` 调用；本文件不再自行挂钩子。
  *
@@ -18,8 +17,7 @@
 
 import {
   WALL_TYPE,
-  isActiveBehaviorType,
-  getRegistrableTypes,
+  isBehaviorType,
   getRegionPolygonEdges,
   elevationInRegion,
   elevationRangeOverlaps,
@@ -370,8 +368,7 @@ function getWrappedBackend(PolygonBackend) {
 /**
  * 取当前场景中所有会对该类穿透生效的 Region 墙体行为。
  *
- * 行为 type 用 `isActiveBehaviorType(type, "regionWall")` 匹配：er-qol 的规范化键与裸子类型名
- * 一律有效；旧模组的精确键在旧模组启用时让位（由旧模组负责），避免重复收边。
+ * 行为 type 用 `isBehaviorType(type, "regionWall")` 匹配，即只认 `er-qol.regionWall`。
  * 高度判定用 `elevationInRegion` / `elevationRangeOverlaps`（无目的点高度时只看起点高度）。
  *
  * @param {Scene} scene 场景
@@ -386,7 +383,7 @@ function getActiveRegionWallBehaviors(scene, level, type, originElevation, desti
   for ( const region of scene.regions ) {
     if ( !region.includedInLevel(level) ) continue;
     for ( const behavior of region.behaviors ) {
-      if ( !behavior.active || !isActiveBehaviorType(behavior.type, "regionWall") ) continue;
+      if ( !behavior.active || !isBehaviorType(behavior.type, "regionWall") ) continue;
       if ( !behavior.system.blocks?.(type) ) continue;
       if ( destinationElevation === undefined ) {
         if ( !elevationInRegion(region, originElevation) ) continue;
@@ -502,19 +499,15 @@ export function installWalls() {
 /**
  * 注册「Region Walls」Behavior 的 type 键。
  *
- * 规范化键 `er-qol.regionWall` 与裸子类型名 `regionWall` 始终注册；旧模组的**精确**键
- * `region-walls.regionWall` 只在旧 `region-walls` 未启用时注册——旧模组启用时会自己处理它，
- * er-qol 再注册/处理一遍会让同一条 Region 边界被收集两次。
- * `typeLabels` / `typeHints` / `typeIcons` 只写给规范化键，否则下拉框会出现重复条目。
+ * 只注册 er-qol 自己的 `er-qol.regionWall`（不保留旧模组 `region-walls` 的 type 键别名，
+ * 该模组从未发布过、不需要数据迁移）。
  *
  * 必须在 `Hooks.once("init")` 中调用（由 `init.mjs` 统一调用）。
  *
  * @returns {void}
  */
 export function registerWallBehaviorTypes() {
-  for ( const type of getRegistrableTypes("regionWall") ) {
-    CONFIG.RegionBehavior.dataModels[type] = RegionWallBehaviorType;
-  }
+  CONFIG.RegionBehavior.dataModels[WALL_TYPE] = RegionWallBehaviorType;
   CONFIG.RegionBehavior.typeLabels[WALL_TYPE] = "ERQOL.REGION_WALLS.label";
   CONFIG.RegionBehavior.typeHints[WALL_TYPE] = "ERQOL.REGION_WALLS.hint";
   CONFIG.RegionBehavior.typeIcons[WALL_TYPE] = "fa-solid fa-bars";

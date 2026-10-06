@@ -17,17 +17,15 @@ import {
   getProbeElevation,
   getRegionSampleElevation
 } from "./region-common.mjs";
+import {
+  SETTINGS,
+  getBoolSetting,
+  getNumberSetting
+} from "./settings.mjs";
 
 /* -------------------------------------------------------------------------- */
-/*  设置注册                                                                     */
+/*  公开的 type 键                                                              */
 /* -------------------------------------------------------------------------- */
-
-/** 模组设置键。 */
-export const SETTINGS = Object.freeze({
-  HOVER_HIGHLIGHT: "hoverHighlight",
-  HOVER_INFO: "hoverInfo",
-  TELEPORT_COOLDOWN: "teleportCooldown"
-});
 
 /** 区域提示（Announce）的 Behavior type 键。 */
 export const ANNOUNCE_TYPE = `${MODULE_ID}.regionAnnounce`;
@@ -37,70 +35,6 @@ export const TELEPORT_TYPE = `${MODULE_ID}.regionTeleport`;
 
 /** 传送冷却标记，写在 `token.flags["er-qol"].teleportCooldown`。 */
 const TELEPORT_COOLDOWN_FLAG = "teleportCooldown";
-
-/**
- * 注册模组设置。
- * 必须在 `Hooks.once("init")` 中调用。
- * @returns {void}
- */
-export function registerFeatureSettings() {
-  game.settings.register(MODULE_ID, SETTINGS.HOVER_HIGHLIGHT, {
-    name: "ERQOL.SETTINGS.hoverHighlight.name",
-    hint: "ERQOL.SETTINGS.hoverHighlight.hint",
-    scope: "client",
-    config: true,
-    type: Boolean,
-    default: true
-  });
-
-  game.settings.register(MODULE_ID, SETTINGS.HOVER_INFO, {
-    name: "ERQOL.SETTINGS.hoverInfo.name",
-    hint: "ERQOL.SETTINGS.hoverInfo.hint",
-    scope: "client",
-    config: true,
-    type: Boolean,
-    default: true
-  });
-
-  game.settings.register(MODULE_ID, SETTINGS.TELEPORT_COOLDOWN, {
-    name: "ERQOL.SETTINGS.teleportCooldown.name",
-    hint: "ERQOL.SETTINGS.teleportCooldown.hint",
-    scope: "world",
-    config: true,
-    type: Number,
-    range: {min: 0, max: 10000, step: 100},
-    default: 1000
-  });
-}
-
-/**
- * 读取布尔设置（在 `ready` 之前调用也不会抛错）。
- * @param {string} key 设置键
- * @param {boolean} [fallback=true] 读取失败时的回退值
- * @returns {boolean} 设置值
- */
-function getBoolSetting(key, fallback = true) {
-  try {
-    return !!game.settings.get(MODULE_ID, key);
-  } catch ( err ) {
-    return fallback;
-  }
-}
-
-/**
- * 读取数字设置。
- * @param {string} key 设置键
- * @param {number} [fallback=0] 读取失败时的回退值
- * @returns {number} 设置值
- */
-function getNumberSetting(key, fallback = 0) {
-  try {
-    const value = Number(game.settings.get(MODULE_ID, key));
-    return Number.isFinite(value) ? value : fallback;
-  } catch ( err ) {
-    return fallback;
-  }
-}
 
 /* -------------------------------------------------------------------------- */
 /*  Region Announce：走进/离开 Region 时提示或发聊天消息                          */
@@ -757,12 +691,11 @@ export function registerHoverFeatures() {
 }
 
 /**
- * 汇总所有新功能的注册（设置 + Behavior type）。
- * 必须在 `Hooks.once("init")` 中调用。
+ * 注册本模块新增的两个 Behavior type。
+ * 必须在 `Hooks.once("init")` 中调用（模组设置由 `settings.mjs` 统一注册）。
  * @returns {void}
  */
 export function registerFeatureTypes() {
-  registerFeatureSettings();
   registerAnnounceBehaviorTypes();
   registerTeleportBehaviorTypes();
 }

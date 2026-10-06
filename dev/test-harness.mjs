@@ -460,19 +460,19 @@ assert("getProbeElevation：有界取中点", common.getProbeElevation(makeRegio
 assert("getProbeElevation：bottom === top", common.getProbeElevation(makeRegion({bottom: 3, top: 3})) === 3);
 
 /* -------------------------------------------------------------------------- */
-/*  2. 兼容别名                                                                 */
+/*  2. type 键命名空间                                                          */
 /* -------------------------------------------------------------------------- */
 
-console.log("\n[2] 兼容别名");
+console.log("\n[2] type 键命名空间");
 
-assert("normalizeBehaviorType：旧光照键", common.normalizeBehaviorType("region-lighting.regionLighting") === "er-qol.regionLighting");
-assert("normalizeBehaviorType：旧墙体键", common.normalizeBehaviorType("region-walls.regionWall") === "er-qol.regionWall");
-assert("normalizeBehaviorType：裸子类型键", common.normalizeBehaviorType("regionWall") === "er-qol.regionWall");
-assert("normalizeBehaviorType：新键原样", common.normalizeBehaviorType("er-qol.regionWall") === "er-qol.regionWall");
-assert("normalizeBehaviorType：无关键原样", common.normalizeBehaviorType("other-mod.thing") === "other-mod.thing");
-assert("isBehaviorType 命中别名组", common.isBehaviorType("region-lighting.regionLighting", "regionLighting") === true);
-assert("isBehaviorType 不串组", common.isBehaviorType("region-walls.regionWall", "regionLighting") === false);
+assert("isBehaviorType 命中自己的键", common.isBehaviorType("er-qol.regionLighting", "regionLighting") === true);
+assert("isBehaviorType 不命中旧模组的键", common.isBehaviorType("region-lighting.regionLighting", "regionLighting") === false);
+assert("isBehaviorType 不命中裸子类型名", common.isBehaviorType("regionWall", "regionWall") === false);
+assert("isBehaviorType 不跨子类型误判", common.isBehaviorType("er-qol.regionWall", "regionLighting") === false);
+assert("isBehaviorType 不匹配相似键", common.isBehaviorType("er-qol.regionWallX", "regionWall") === false);
 assert("globalThis.erqol 已挂载", globalThis.erqol?.MODULE_ID === "er-qol");
+assert("BEHAVIOR_SUBTYPES 覆盖四个子类型", deepEqual(
+  [...common.BEHAVIOR_SUBTYPES].sort(), ["regionAnnounce", "regionLighting", "regionTeleport", "regionWall"]));
 
 /* -------------------------------------------------------------------------- */
 /*  3. Behavior 注册（init 钩子）                                                */
@@ -480,49 +480,27 @@ assert("globalThis.erqol 已挂载", globalThis.erqol?.MODULE_ID === "er-qol");
 
 console.log("\n[3] Behavior 类型注册");
 
-// 场景一：两个旧模组**仍然启用**（swpt 用户的推荐组合）→ er-qol 让位，不注册旧别名。
-const legacyLightingMod = {id: "region-lighting", active: true};
-const legacyWallsMod = {id: "region-walls", active: true};
-game.modules.set("region-lighting", legacyLightingMod);
-game.modules.set("region-walls", legacyWallsMod);
-
 Hooks.callAll("init");
 
-for ( const type of ["er-qol.regionLighting", "er-qol.regionWall", "er-qol.regionAnnounce", "er-qol.regionTeleport"] ) {
+const CANONICAL_TYPES = [
+  "er-qol.regionLighting", "er-qol.regionWall", "er-qol.regionAnnounce", "er-qol.regionTeleport"
+];
+for ( const type of CANONICAL_TYPES ) {
   assert(`dataModels 注册 ${type}`, !!CONFIG.RegionBehavior.dataModels[type]);
 }
-assert("旧模组启用时让出旧模组的**精确**键（避免重复收集）",
+assert("不注册任何旧模组的 type 键（含裸子类型名）",
   !CONFIG.RegionBehavior.dataModels["region-lighting.regionLighting"]
-  && !CONFIG.RegionBehavior.dataModels["region-walls.regionWall"]);
-assert("旧模组启用时**仍**注册裸子类型键（旧模组不匹配它，否则会变成孤儿）",
-  !!CONFIG.RegionBehavior.dataModels.regionLighting && !!CONFIG.RegionBehavior.dataModels.regionWall);
-assert("旧模组启用时 er-qol 不处理旧模组的精确键（让位）",
-  common.isActiveBehaviorType("region-walls.regionWall", "regionWall") === false
-  && common.isActiveBehaviorType("region-lighting.regionLighting", "regionLighting") === false);
-assert("旧模组启用时 er-qol 仍处理裸子类型键（防止无人接手的静默失效）",
-  common.isActiveBehaviorType("regionWall", "regionWall") === true
-  && common.isActiveBehaviorType("regionLighting", "regionLighting") === true);
-assert("旧模组启用时仍处理规范化键",
-  common.isActiveBehaviorType("er-qol.regionWall", "regionWall") === true
-  && common.isActiveBehaviorType("er-qol.regionLighting", "regionLighting") === true);
-assert("这类跳过不算注册缺失",
-  deepEqual(globalThis.erqol.registeredTypes.missing, []));
-
-// 场景二：两个旧模组**停用**（不用 swpt 的用户）→ er-qol 接管全部旧 type 键。
-legacyLightingMod.active = false;
-legacyWallsMod.active = false;
-Hooks.callAll("init");
-
-for ( const type of [
-  "regionLighting", "region-lighting.regionLighting", "er-qol.regionLighting",
-  "regionWall", "region-walls.regionWall", "er-qol.regionWall",
-  "er-qol.regionAnnounce", "er-qol.regionTeleport"
-] ) {
-  assert(`旧模组停用后 dataModels 注册 ${type}`, !!CONFIG.RegionBehavior.dataModels[type]);
-}
-assert("旧模组停用后 er-qol 接管旧 type 键",
-  common.isActiveBehaviorType("region-walls.regionWall", "regionWall") === true
-  && common.isActiveBehaviorType("region-lighting.regionLighting", "regionLighting") === true);
+  && !CONFIG.RegionBehavior.dataModels["region-walls.regionWall"]
+  && !CONFIG.RegionBehavior.dataModels.regionLighting
+  && !CONFIG.RegionBehavior.dataModels.regionWall);
+assert("dataModels 里没有多余条目（只有本模组 4 个键）",
+  deepEqual(Object.keys(CONFIG.RegionBehavior.dataModels).sort(), [...CANONICAL_TYPES].sort()),
+  Object.keys(CONFIG.RegionBehavior.dataModels).join(", "));
+assert("typeLabels 只给 4 个 er-qol 键",
+  deepEqual(Object.keys(CONFIG.RegionBehavior.typeLabels).sort(), [...CANONICAL_TYPES].sort()));
+assert("typeLabels 光照 = ERQOL key",
+  CONFIG.RegionBehavior.typeLabels["er-qol.regionLighting"] === "ERQOL.REGION_LIGHTING.label");
+assert("注册自检无缺失", deepEqual(globalThis.erqol.registeredTypes.missing, []));
 
 // 音效必须尊重 visibility：非 Active GM 在 chat+gm 组合下不应放提示音。
 const soundSystem = new features.RegionAnnounceBehaviorType({
@@ -539,20 +517,6 @@ assert("visibility=gm 时玩家端不放提示音", soundCalls.length === 0, `�
 globalThis.game.user = USER;
 soundSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(soundSystem, soundEvent);
 assert("visibility=gm 时 GM 端放提示音", soundCalls.length === 1, `实际 ${soundCalls.length}`);
-
-// 后续用例按"旧模组停用"（er-qol 独立承担）运行。
-game.modules.delete("region-lighting");
-game.modules.delete("region-walls");
-
-assert("typeLabels 只给规范化键（无裸子类型键）",
-  !CONFIG.RegionBehavior.typeLabels.regionWall && !CONFIG.RegionBehavior.typeLabels.regionLighting);
-assert("typeLabels 光照 = ERQOL key",
-  CONFIG.RegionBehavior.typeLabels["er-qol.regionLighting"] === "ERQOL.REGION_LIGHTING.label");
-assert("typeLabels 提示/传送已注册",
-  !!CONFIG.RegionBehavior.typeLabels["er-qol.regionAnnounce"]
-  && !!CONFIG.RegionBehavior.typeLabels["er-qol.regionTeleport"]);
-assert("别名冲突检测：四个规范化键齐全",
-  deepEqual(globalThis.erqol.registeredTypes.missing, []));
 
 /* -------------------------------------------------------------------------- */
 /*  4. 本地化键完整性                                                            */
@@ -817,6 +781,41 @@ console.log("\n[8] 设置注册");
 assert("hoverHighlight 已注册", SETTINGS.has("er-qol.hoverHighlight"));
 assert("hoverInfo 已注册", SETTINGS.has("er-qol.hoverInfo"));
 assert("teleportCooldown 已注册", SETTINGS.has("er-qol.teleportCooldown"));
+for ( const key of ["wallHint", "wallHintColor", "wallHintWidth", "wallHintOpacity", "wallHintScope", "wallHintShowSecret"] ) {
+  assert(`墙体提示线设置 ${key} 已注册`, SETTINGS.has(`er-qol.${key}`));
+}
+assert("墙体提示线默认关闭", SETTINGS.get("er-qol.wallHint") === false);
+assert("密门默认不参与提示", SETTINGS.get("er-qol.wallHintShowSecret") === false);
+
+/* -------------------------------------------------------------------------- */
+/*  8b. 墙体提示线（其他图层显示墙体线）                                          */
+/* -------------------------------------------------------------------------- */
+
+console.log("\n[8b] 墙体提示线");
+
+const wallHint = await import(scripts("wall-hint.mjs"));
+assert("颜色解析：#00e5ff → 0x00e5ff",
+  wallHint.parseHintColor("#00e5ff") === 0x00e5ff, String(wallHint.parseHintColor("#00e5ff")));
+assert("颜色解析：不支持的值回退默认色（不是密门类别色）",
+  wallHint.parseHintColor("not-a-color") !== wallHint.SECRET_DOOR_CATEGORY_COLOR);
+assert("密门类别色常量与 Foundry 核心一致（0xA612D4）", wallHint.SECRET_DOOR_CATEGORY_COLOR === 0xA612D4);
+assert("样式归一化：线宽/不透明度取设置值",
+  deepEqual(wallHint.normalizeHintStyle({color: "#ff0000", width: 3, opacity: 0.5}).width, 3)
+  && wallHint.normalizeHintStyle({color: "#ff0000", width: 3, opacity: 0.5}).opacity === 0.5);
+
+const secretWallDoc = {c: [{x: 0, y: 0}, {x: 10, y: 0}], door: 2, levels: new Set()};
+const normalWallDoc = {c: [{x: 0, y: 0}, {x: 10, y: 0}], door: 0, levels: new Set()};
+assert("默认排除密门", wallHint.isWallHintEligible(secretWallDoc, false) === false);
+assert("开启后包含密门", wallHint.isWallHintEligible(secretWallDoc, true) === true);
+assert("普通墙始终符合条件", wallHint.isWallHintEligible(normalWallDoc, false) === true);
+assert("缺少端点的墙被跳过", wallHint.getWallSegment({c: [{x: 0, y: 0}]}) === null);
+assert("端点解析正确",
+  deepEqual(wallHint.getWallSegment(normalWallDoc), {a: {x: 0, y: 0}, b: {x: 10, y: 0}}));
+assert("otherLayers 范围在墙体图层激活时隐藏",
+  wallHint.shouldHideHintOnWallsLayer("otherLayers", true) === true
+  && wallHint.shouldHideHintOnWallsLayer("otherLayers", false) === false);
+assert("always 范围任何图层都显示",
+  wallHint.shouldHideHintOnWallsLayer("always", true) === false);
 
 /* -------------------------------------------------------------------------- */
 /*  9. 光照 / 墙体模块（可选）                                                   */

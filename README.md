@@ -1,22 +1,17 @@
 # EternalRider's QoL (er-qol)
 
 A Foundry VTT **Region quality-of-life** module for Foundry **V14**: it bundles the former
-`region-lighting` and `region-walls` modules into one package and adds a few more Region tools.
+`region-lighting` and `region-walls` behaviors into one package and adds more Region tools plus a
+wall-outline overlay.
 
-> This module **supersedes** [`region-lighting`](https://github.com/EternalRider/region-lighting) and
-> [`region-walls`](https://github.com/EternalRider/region-walls): it contains both behaviors plus
-> extra tools. Whether you may disable the two old modules depends on one thing:
->
-> - **You do *not* use `swpt`** → install `er-qol`, then disable (or uninstall) the two old modules.
->   `er-qol` takes over their behavior-type keys as aliases.
-> - **You *do* use `swpt`** → install `er-qol` and **keep `region-lighting` and `region-walls`
->   enabled**. `swpt` gates its Region helpers on those modules being active, so disabling them
->   silently breaks `swpt`'s `buildRegionLightingData()` / `buildRegionWallData()`.
->   Coexistence is supported: `er-qol` then deliberately leaves the legacy type keys to the old
->   modules (see [Compatibility](#compatibility)), so nothing is processed twice.
->
-> Not sure? Keep the two old modules enabled — that combination is always correct and `er-qol`
-> prints the detected state to the console at `ready`.
+> This module **supersedes** `region-lighting` and `region-walls`. Those two were never released —
+> they only ever existed as local builds — so `er-qol` does **not** carry their behavior-type keys
+> over. Everything uses the `er-qol.*` namespace (see [Compatibility](#compatibility)).
+> **Disable or remove `region-lighting` / `region-walls` when you enable `er-qol`.**
+> One exception: the local `swpt` module gates its `buildRegionLightingData()` /
+> `buildRegionWallData()` helpers on `game.modules.get("region-lighting")?.active`, so if you rely on
+> those helpers keep the old modules enabled too — but note that Region behaviors created with their
+> old type keys will then be driven by the old modules, not by `er-qol`.
 
 ## Features
 
@@ -71,23 +66,29 @@ Client-side settings in **Configure Settings → EternalRider's QoL**:
 - **Hover Highlight** – draw the hovered Region's outline on top of the canvas;
 - **Hover Info** – show a small notice with the Region's behaviors and elevation range.
 
+### 6. Wall Outlines On Other Layers *(new)*
+
+Client-side setting that draws a thin line for **every wall even when the Walls layer is not
+active**, so everyone can see where the real wall lines are while moving tokens around.
+
+- one **uniform configurable color** — deliberately *not* the Walls-layer colors, which would give
+  secret doors away at a glance;
+- configurable width and opacity;
+- scope: only on other layers (hidden while the Walls layer is active) or always;
+- secret doors are excluded by default (opt in via **Include Secret Doors**).
+
 ## Compatibility
 
 - Foundry **V14** (`minimum: 14`, `verified: 14.368`). The two merged modules targeted V14 as well.
-- **Backward compatible behavior types.** If the corresponding old module is **not** active,
-  `er-qol` registers its behavior types under the legacy keys
-  (`region-lighting.regionLighting`, `region-walls.regionWall`, and the bare subtypes
-  `regionLighting` / `regionWall`) as well as its own `er-qol.*` keys — so existing worlds need no
-  migration.
-- **Coexistence with the old modules.** When `region-lighting` / `region-walls` **are** active,
-  `er-qol` deliberately does *not* register their legacy keys and does *not* process behavior
-  documents of those types. The old module handles them exactly once, so a single Region never gets
-  two light sources or two sets of collision edges. `er-qol` still handles its own `er-qol.*` keys
-  and all of its new features.
-  Consequence: with the old module active, legacy-type behaviors are handled by it (not by
-  `er-qol`), which is exactly what `swpt` needs — `swpt` writes those legacy keys.
-- The `swpt` module writes those legacy type keys through its API, so it keeps working **as long as
-  `region-lighting` and `region-walls` stay enabled**.
+- **er-qol namespaced behavior types only.** All four Region behaviors use `er-qol.*` type keys
+  (`er-qol.regionLighting`, `er-qol.regionWall`, `er-qol.regionAnnounce`, `er-qol.regionTeleport`).
+  The pre-release `region-lighting` / `region-walls` type keys are **not** carried over, so Region
+  behaviors created with those keys stop working unless the old module is still enabled (in which
+  case the old module keeps driving them).
+- The local `swpt` module gates its `buildRegionLightingData()` / `buildRegionWallData()` helpers on
+  `game.modules.get("region-lighting")?.active` (and the same for `region-walls`). If you use those
+  helpers, keep the two old modules enabled — the behaviors they create will then be handled by the
+  old modules.
 - No system dependency: works on any game system, tested against the core Region API.
 
 ## Installation
@@ -102,16 +103,15 @@ Or drop the folder into `FoundryVTT/Data/modules/er-qol` and enable it.
 
 ## Migrating from region-lighting / region-walls
 
-1. Install and enable `er-qol`. Existing Regions keep their behavior settings — with the old modules
-   disabled, `er-qol` answers to their legacy type keys.
-2. **If you do not use `swpt`,** disable (or uninstall) `region-lighting` and `region-walls`.
-3. **If you do use `swpt`, keep `region-lighting` and `region-walls` enabled.**
-   `swpt` gates its `buildRegionLightingData()` / `buildRegionWallData()` helpers on
-   `game.modules.get("region-lighting")?.active` (and the same for `region-walls`), so disabling
-   them silently turns those helpers into no-ops.
-   Running `er-qol` alongside the two legacy modules is **supported**: `er-qol` steps aside for the
-   legacy type keys (see [Compatibility](#compatibility)), so each Region behavior is processed
-   exactly once. `er-qol` prints the detected state to the console at `ready`.
+Those modules were never released, so there is no published data to migrate:
+
+1. Install and enable `er-qol`.
+2. Disable (or uninstall) `region-lighting` and `region-walls`.
+3. Re-create any Region behaviors that used the old type keys — pick the matching
+   `er-qol.*` behavior from the type dropdown and re-enter its settings. (The schema fields are
+   identical to the old ones, so the values carry over by hand.)
+4. Exception: if you use `swpt`'s Region helpers, keep the two old modules enabled (see
+   [Compatibility](#compatibility)).
 
 ## License
 
