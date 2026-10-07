@@ -158,8 +158,11 @@ export function registerWallHintSettings() {
     config: true,
     // 多选：必须是实现了 `_toInput` 的字段实例（见 getBlockingFieldType 的说明），
     // 而且 choices 要挂在**字段**上，core 不会把 setting.choices 传进 DataField。
+    // 这里的 setting.choices 只服务退化分支（`type: Array`）——那时 core 会把它包成
+    // `StringField(choices)`（单选下拉），至少让选项可见；正常环境走字段分支时该属性被忽略。
     // 空集合 = 不过滤，任何墙体都画。
     type: getBlockingFieldType(),
+    choices: {...WALL_HINT_BLOCKING_CHOICES},
     default: []
   });
 }
@@ -177,8 +180,8 @@ export function registerWallHintSettings() {
  * 点已选标签上的 ✕ 移除——**不需要按 Ctrl/Cmd**。
  * `SetField#clean()` 仍写数组、`initialize()` 返回 `Set`，两者都被 `getArraySetting()` 兼容。
  *
- * 拿不到 `foundry.data.fields` 时退回 `Array`（core 会包成 `StringField + choices` = 单选，
- * 仅在退化环境下发生）。
+ * 拿不到 `foundry.data.fields` 时退回 `Array`；core 会把它包成
+ * `ArrayField(StringField + setting.choices)`（单选，仅在退化环境下发生）。
  *
  * @returns {Function|object} 字段构造函数或字段实例
  */
