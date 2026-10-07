@@ -218,8 +218,6 @@ globalThis.Hooks = {
 };
 
 const SETTINGS = new Map([
-  ["er-qol.hoverHighlight", true],
-  ["er-qol.hoverInfo", true],
   ["er-qol.wallHint", false],
   ["er-qol.wallHintColor", "#00e5ff"],
   ["er-qol.wallHintWidth", 2],
@@ -621,20 +619,22 @@ announceSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(announce
 assert("Active GM 创建聊天消息", CHAT_MESSAGES.length === beforeCount + 1);
 
 /* -------------------------------------------------------------------------- */
-/*  7. 悬停高亮                                                                 */
+/*  7. 画布级钩子（悬停功能已移除）                                               */
 /* -------------------------------------------------------------------------- */
 
-console.log("\n[7] 悬停高亮");
+console.log("\n[7] 画布级钩子");
 
 Hooks.callAll("ready");
-const drawRegionHook = (HOOKS.get("drawRegion") ?? [])[0];
-assert("drawRegion 钩子已注册", typeof drawRegionHook === "function");
+assert("悬停相关钩子已不再注册（drawRegion / refreshRegion）",
+  !(HOOKS.get("drawRegion") ?? []).length && !(HOOKS.get("refreshRegion") ?? []).length);
+assert("画布拆除钩子仍然安装（wall-hint / token-blocking 用）",
+  (HOOKS.get("canvasTearDown") ?? []).length > 0);
 
-const parentContainer = new MockContainer();
+// 给后续 wall-hint 用例准备一个最小画布
 globalThis.canvas = {
   ready: true,
-  scene: {id: "scene-1", regions: [], name: "Scene 1"},
-  regions: parentContainer,
+  scene: {id: "scene-1", regions: [], name: "Scene 1", tokens: [], walls: []},
+  regions: new MockContainer(),
   effects: {
     darknessSources: new Map(),
     lightSources: new Map()
@@ -642,24 +642,6 @@ globalThis.canvas = {
   perception: {update: () => {}},
   dimensions: {distancePixels: 100}
 };
-const hoverRegion = makeRegion({name: "Hovered"});
-const fakeRegionObject = {
-  document: hoverRegion,
-  eventMode: "auto",
-  handlers: {},
-  on(event, fn) { this.handlers[event] = fn; return this; }
-};
-drawRegionHook(fakeRegionObject);
-assert("Region 对象绑定 pointerover", typeof fakeRegionObject.handlers.pointerover === "function");
-assert("Region 对象绑定 pointerout", typeof fakeRegionObject.handlers.pointerout === "function");
-
-NOTIFICATIONS.length = 0;
-fakeRegionObject.handlers.pointerover({data: {originalEvent: {clientX: 10, clientY: 10}}});
-assert("悬停后创建高亮图层", parentContainer.children.some(child => child.name === "erqolHoverHighlight"));
-assert("悬停后显示区域信息", NOTIFICATIONS.some(n => String(n.message).includes("Hovered")));
-fakeRegionObject.handlers.pointerout();
-assert("移出后清空高亮",
-  (parentContainer.children.find(child => child.name === "erqolHoverHighlight")?.children.length ?? 0) === 0);
 
 /* -------------------------------------------------------------------------- */
 /*  8. 设置注册                                                                 */
@@ -667,8 +649,8 @@ assert("移出后清空高亮",
 
 console.log("\n[8] 设置注册");
 
-assert("hoverHighlight 已注册", SETTINGS.has("er-qol.hoverHighlight"));
-assert("hoverInfo 已注册", SETTINGS.has("er-qol.hoverInfo"));
+assert("悬停相关设置已全部删除",
+  !SETTINGS.has("er-qol.hoverHighlight") && !SETTINGS.has("er-qol.hoverInfo"));
 assert("区域传送的设置已全部删除（含 world 级冷却）",
   !SETTINGS.has("er-qol.teleportCooldown") && !SETTINGS.has("er-qol.regionTeleport"));
 for ( const key of ["wallHint", "wallHintColor", "wallHintWidth", "wallHintOpacity", "wallHintScope", "wallHintBlocking"] ) {
@@ -741,6 +723,70 @@ assert("otherLayers 范围在墙体图层激活时隐藏",
   && wallHint.shouldHideHintOnWallsLayer("otherLayers", false) === false);
 assert("always 范围任何图层都显示",
   wallHint.shouldHideHintOnWallsLayer("always", true) === false);
+
+/* -------------------------------------------------------------------------- */
+/*  8c. Token 阻挡（像墙一样阻挡移动/视野/声音/光照）                              */
+/* -------------------------------------------------------------------------- */
+
+console.log("\n[8c] Token 阻挡");
+
+const tokenBlocking = await import(scripts("token-blocking.mjs"));
+assert("导出了冻结接口",
+  !!tokenBlocking.TOKEN_BLOCKING_FLAG
+  && Array.isArray(tokenBlocking.TOKEN_BLOCKING_KEYS)
+  && typeof tokenBlocking.getTokenBlocking === "function"
+  && typeof tokenBlocking.isEmptyTokenBlocking === "function"
+  && typeof tokenBlocking.getTokenBlockingEdges === "function"
+  && typeof tokenBlocking.refreshTokenBlockingEdges === "function"
+  && typeof tokenBlocking.installTokenBlocking === "function");
+assert("通道顺序 = move/sight/sound/light",
+  deepEqual(tokenBlocking.TOKEN_BLOCKING_KEYS, ["move", "sight", "sound", "light"]));
+assert("默认全 false",
+  deepEqual(tokenBlocking.DEFAULT_TOKEN_BLOCKING, {move: false, sight: false, sound: false, light: false}));
+
+const blockingDoc = {
+  id: "tk1", x: 100, y: 200, elevation: 5, width: 1, height: 1,
+  flags: {"er-qol": {blocking: {move: true, sight: true, sound: false, light: false}}}
+};
+assert("读取 TokenDocument 的阻挡配置", deepEqual(tokenBlocking.getTokenBlocking(blockingDoc),
+  {move: true, sight: true, sound: false, light: false}));
+assert("缺失时回退默认", deepEqual(tokenBlocking.getTokenBlocking({id: "x"}),
+  {move: false, sight: false, sound: false, light: false}));
+assert("非布尔值按 false", deepEqual(
+  tokenBlocking.getTokenBlocking({flags: {"er-qol": {blocking: {move: 1, sight: "true"}}}}),
+  {move: false, sight: false, sound: false, light: false}));
+assert("isEmptyTokenBlocking：全 false → true",
+  tokenBlocking.isEmptyTokenBlocking({move: false, sight: false, sound: false, light: false}) === true);
+assert("isEmptyTokenBlocking：有一项 → false",
+  tokenBlocking.isEmptyTokenBlocking({move: true}) === false);
+
+const EdgeStub = class {
+  constructor(a, b, options) {
+    Object.assign(this, options);
+    this.a = a;
+    this.b = b;
+  }
+};
+assert("全 false 不产生任何边",
+  deepEqual(tokenBlocking.getTokenBlockingEdges({id: "x", flags: {}}, {EdgeClass: EdgeStub, width: 100, height: 100}), []));
+const blockingEdges = tokenBlocking.getTokenBlockingEdges(blockingDoc, {EdgeClass: EdgeStub, width: 100, height: 100});
+assert("四条边（矩形）", blockingEdges.length === 4, `实际 ${blockingEdges.length}`);
+assert("边 id 前缀正确且唯一",
+  blockingEdges.every(edge => String(edge.id).startsWith("er-qol.tokenBlocking."))
+  && new Set(blockingEdges.map(edge => edge.id)).size === 4);
+assert("边 type=wall、direction=BOTH",
+  blockingEdges.every(edge => (edge.type === "wall") && (edge.direction === CONST.EDGE_DIRECTIONS.BOTH)));
+assert("四通道逐项映射（勾 move+sight，未勾 sound/light）",
+  blockingEdges.every(edge => (edge.move === CONST.EDGE_SENSE_TYPES.NORMAL)
+    && (edge.sight === CONST.EDGE_SENSE_TYPES.NORMAL)
+    && (edge.sound === CONST.EDGE_SENSE_TYPES.NONE)
+    && (edge.light === CONST.EDGE_SENSE_TYPES.NONE)));
+assert("高度取自 doc.elevation", blockingEdges.every(edge => edge.a.elevation === 5));
+assert("options.elevation 覆盖 doc.elevation",
+  tokenBlocking.getTokenBlockingEdges(blockingDoc, {EdgeClass: EdgeStub, width: 100, height: 100, elevation: 0})
+    .every(edge => edge.a.elevation === 0));
+assert("缺 EdgeClass → 空数组且不抛错",
+  deepEqual(tokenBlocking.getTokenBlockingEdges(blockingDoc, {width: 100, height: 100}), []));
 
 /* -------------------------------------------------------------------------- */
 /*  9. 光照 / 墙体模块（可选）                                                   */

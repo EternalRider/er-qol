@@ -20,8 +20,9 @@ import {
 import {registerModuleSettings} from "./settings.mjs";
 import {registerLightingBehaviorTypes, installLighting} from "./region-lighting.mjs";
 import {registerWallBehaviorTypes, installWalls} from "./region-walls.mjs";
-import {registerFeatureTypes, registerHoverFeatures, ANNOUNCE_TYPE} from "./features.mjs";
+import {registerFeatureTypes, ANNOUNCE_TYPE} from "./features.mjs";
 import {installWallHint} from "./wall-hint.mjs";
+import {installTokenBlocking} from "./token-blocking.mjs";
 
 /** 子类型 → er-qol 的 type 键。 */
 const TYPE_BY_SUBTYPE = Object.freeze({
@@ -81,14 +82,14 @@ Hooks.once("init", () => {
 });
 
 Hooks.once("ready", () => {
-  // 画布交互（悬停高亮 / 区域信息）只在有画布时需要。
-  registerHoverFeatures();
-
   // 光照/黑暗源需要挂在画布上；重复调用是幂等的。
   installLighting();
 
   // 墙体提示线：纯客户端可视化，幂等安装。
   installWallHint();
+
+  // Token/Actor 原型的"像墙一样阻挡"：维护 canvas.edges 里的 token 边界。
+  installTokenBlocking();
 
   console.log(`er-qol | 就绪（module id: ${MODULE_ID}）。`);
 });

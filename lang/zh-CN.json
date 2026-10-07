@@ -120,14 +120,6 @@
       }
     },
     "SETTINGS": {
-      "hoverHighlight": {
-        "name": "悬停高亮",
-        "hint": "鼠标悬停在 Region 上时高亮其轮廓。"
-      },
-      "hoverInfo": {
-        "name": "悬停信息",
-        "hint": "鼠标悬停在 Region 上时显示简要信息（包含的行为与高度范围）。"
-      },
       "wallHint": {
         "name": "其他图层显示墙体线",
         "hint": "即使不在墙体图层，也为每面墙画一条细线，方便玩家看清真实墙体线的位置。使用统一颜色而不是墙体图层那套按类别上色，避免暴露密门。"
@@ -159,15 +151,31 @@
         "light": "阻挡光照"
       }
     },
-    "INFO": {
-      "behaviors": "包含行为",
-      "elevation": "高度范围",
-      "shapes": "形状数量"
-    },
     "NOTIFY": {
       "regionEntry": "{token} 进入了区域「{region}」。",
       "regionExit": "{token} 离开了区域「{region}」。",
       "unnamedRegion": "未命名区域"
+    },
+    "TOKEN_BLOCKING": {
+      "tab": "阻挡",
+      "legend": "阻挡移动 / 感知",
+      "hint": "让这个 Token 像墙一样阻挡移动与感知。配置写在原型 Token 上，之后放置的 Token 会继承。",
+      "move": {
+        "label": "阻挡移动",
+        "hint": "阻止 Token 与移动路径穿过这个 Token 占用的格子。"
+      },
+      "sight": {
+        "label": "阻挡视野",
+        "hint": "阻止视线与可见性判定穿过这个 Token 占用的格子。"
+      },
+      "sound": {
+        "label": "阻挡声音",
+        "hint": "阻止声音穿过这个 Token 占用的格子。"
+      },
+      "light": {
+        "label": "阻挡光照",
+        "hint": "阻止光照穿过这个 Token 占用的格子。"
+      }
     }
   }
 }

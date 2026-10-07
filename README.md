@@ -44,14 +44,7 @@ Post a **UI notification or chat message** when a token enters or leaves the Reg
 - visibility: everyone / GM + token owner / GM only;
 - optional sound effect with volume.
 
-### 4. Hover Highlight & Region Info *(new)*
-
-Client-side settings in **Configure Settings → EternalRider's QoL**:
-
-- **Hover Highlight** – draw the hovered Region's outline on top of the canvas;
-- **Hover Info** – show a small notice with the Region's behaviors and elevation range.
-
-### 5. Wall Outlines On Other Layers *(new)*
+### 4. Wall Outlines On Other Layers *(new)*
 
 Client-side setting that draws a thin line for **every wall even when the Walls layer is not
 active**, so everyone can see where the real wall lines are while moving tokens around.
@@ -65,8 +58,27 @@ active**, so everyone can see where the real wall lines are while moving tokens 
   options unchecked — the default — to draw every wall. Checked options are combined with **OR**, so
   checking *movement + sight* draws walls that block movement, sight, or both.
 
-> Removed feature: an earlier Region Teleport behavior was dropped — core and several other modules
-> already cover teleportation, and a teleport without an animation is of limited use.
+### 5. Token Blocking *(new)*
+
+Give a token the same kind of presence as a wall: **the space it occupies blocks movement, sight,
+sound and/or light**. Configure it in the Token configuration window — there is a **Blocking** tab
+right after **Light** — and the values are stored on the **prototype token**, so tokens created
+afterwards inherit them.
+
+- four independent channels: Blocks Movement / Sight / Sound / Light;
+- the blocking outline is the token's own footprint (its grid square(s)), so a door-sized token can
+  act as a door, a pillar token can block line of sight, etc.;
+- it participates in the same edge/sweep pipeline as walls, so sight, light, sound and movement
+  polygon checks all see it.
+
+> Scope notes: only these four channels are covered (walls additionally block darkness, and carry a
+> light threshold). `Edge` is 2D, so tokens at different elevations **on the same Level** block each
+> other — that is the intended "a token acts as a wall" semantics.
+
+> Removed features (do not re-add):
+> - **Region Teleport** — core and several other modules already cover teleportation, and a teleport
+>   without an animation is of limited use.
+> - **Hover Highlight / Region Info** — never worked reliably here; the author did not need them.
 
 ## Compatibility
 

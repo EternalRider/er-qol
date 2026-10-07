@@ -22,14 +22,10 @@ export {MODULE_ID};
 /**
  * 全部设置键。
  *
- * 分两段：`REGION_*` 是 Region 行为/悬停相关的通用设置，
- * `WALL_HINT` 是"在非墙体图层显示墙体提示线"。
+ * 目前只有一段：`WALL_HINT`（"在非墙体图层显示墙体提示线"）。
+ * Region 行为自身的配置在 Behavior 的 schema 里，不走 `game.settings`。
  */
 export const SETTINGS = Object.freeze({
-  /** 悬停 Region 时高亮其轮廓（客户端）。 */
-  HOVER_HIGHLIGHT: "hoverHighlight",
-  /** 悬停 Region 时显示简要信息（客户端）。 */
-  HOVER_INFO: "hoverInfo",
   /** 墙体提示线：总开关。 */
   WALL_HINT: Object.freeze({
     ENABLED: "wallHint",
@@ -63,26 +59,6 @@ export const WALL_HINT_BLOCKING_CHOICES = Object.freeze({
  * @returns {void}
  */
 export function registerModuleSettings() {
-  const {SCOPE} = SETTINGS.WALL_HINT;
-
-  game.settings.register(MODULE_ID, SETTINGS.HOVER_HIGHLIGHT, {
-    name: "ERQOL.SETTINGS.hoverHighlight.name",
-    hint: "ERQOL.SETTINGS.hoverHighlight.hint",
-    scope: "client",
-    config: true,
-    type: Boolean,
-    default: true
-  });
-
-  game.settings.register(MODULE_ID, SETTINGS.HOVER_INFO, {
-    name: "ERQOL.SETTINGS.hoverInfo.name",
-    hint: "ERQOL.SETTINGS.hoverInfo.hint",
-    scope: "client",
-    config: true,
-    type: Boolean,
-    default: true
-  });
-
   registerWallHintSettings();
 }
 

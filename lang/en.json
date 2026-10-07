@@ -120,14 +120,6 @@
       }
     },
     "SETTINGS": {
-      "hoverHighlight": {
-        "name": "Hover Highlight",
-        "hint": "Highlight a Region's outline when the mouse hovers over it."
-      },
-      "hoverInfo": {
-        "name": "Hover Info",
-        "hint": "Show a small info notice (behaviors and elevation range) when hovering a Region."
-      },
       "wallHint": {
         "name": "Wall Outlines On Other Layers",
         "hint": "Draw a thin line for every wall even when the Walls layer is not active, so players can see where the real wall lines are. Uses one uniform color instead of the per-type wall colors, so secret doors are not revealed."
@@ -159,15 +151,31 @@
         "light": "Blocks Light"
       }
     },
-    "INFO": {
-      "behaviors": "Behaviors",
-      "elevation": "Elevation",
-      "shapes": "Shapes"
-    },
     "NOTIFY": {
       "regionEntry": "{token} entered region {region}.",
       "regionExit": "{token} left region {region}.",
       "unnamedRegion": "Region"
+    },
+    "TOKEN_BLOCKING": {
+      "tab": "Blocking",
+      "legend": "Block Movement / Senses",
+      "hint": "Make this token block movement and senses like a wall. Applies to the token's prototype, so newly placed tokens inherit it.",
+      "move": {
+        "label": "Blocks Movement",
+        "hint": "Prevent tokens and movement paths from crossing this token's space."
+      },
+      "sight": {
+        "label": "Blocks Sight",
+        "hint": "Prevent line of sight and visibility from crossing this token's space."
+      },
+      "sound": {
+        "label": "Blocks Sound",
+        "hint": "Prevent sound from crossing this token's space."
+      },
+      "light": {
+        "label": "Blocks Light",
+        "hint": "Prevent light from crossing this token's space."
+      }
     }
   }
 }

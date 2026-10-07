@@ -1,11 +1,11 @@
 /**
- * er-qol 新增功能：区域提示（Announce）、悬停高亮（Hover Highlight）、区域信息（Region Info）。
+ * er-qol 的 Region 附加功能：**区域提示（Region Announce）**。
  *
- * 这些功能都是原 `region-lighting` / `region-walls` 之外的追加能力，
- * 全部可以在模组设置里单独关闭（Behavior 类的功能则在行为自身勾选项里关闭）。
+ * 这是原 `region-lighting` / `region-walls` 之外的追加能力。
  *
- * 注：**区域传送已经移除**——核心自带近似能力，且不带动画的传送实用性不足，
- * 其他模组也提供了同类功能，不再重复造轮子。
+ * 已移除的功能（不要再加回来）：
+ * - **区域传送**：核心自带近似能力，且不带动画的传送实用性不足；
+ * - **悬停高亮 / 区域信息**：实测在本机始终没生效，用户明确表示不需要，直接删除。
  *
  * @module er-qol/scripts/features
  */
@@ -14,15 +14,10 @@ import {
   MODULE_ID,
   erqol,
   format,
-  localize,
-  getRegionPolygonTree,
   getProbeElevation,
   getRegionSampleElevation
 } from "./region-common.mjs";
-import {
-  SETTINGS,
-  getBoolSetting
-} from "./settings.mjs";
+import {SETTINGS} from "./settings.mjs";
 
 /* -------------------------------------------------------------------------- */
 /*  公开的 type 键                                                              */
@@ -280,195 +275,10 @@ export function registerAnnounceBehaviorTypes() {
 }
 
 
+
 /* -------------------------------------------------------------------------- */
-/*  悬停高亮 + 区域信息                                                          */
+/*  注册                                                                        */
 /* -------------------------------------------------------------------------- */
-
-/** 高亮图层容器，`null` 表示尚未创建。 */
-let highlightLayer = null;
-
-/** 当前高亮的 Region id，`null` 表示没有。 */
-let highlightedRegionId = null;
-
-/** 绑定过交互事件的 Region 对象，用于避免重复绑定。 */
-const boundRegionObjects = new WeakSet();
-
-const HIGHLIGHT_NAME = "erqolHoverHighlight";
-
-/**
- * 取得（必要时创建）高亮图层。
- * @returns {PIXI.Container|null} 图层容器
- */
-function getHighlightLayer() {
-  if ( highlightLayer && !highlightLayer.destroyed ) return highlightLayer;
-
-  let parent = null;
-  try {
-    parent = canvas?.regions ?? canvas?.interface ?? canvas?.stage ?? null;
-  } catch ( err ) {
-    parent = null;
-  }
-  if ( !parent ) return null;
-
-  const layer = new PIXI.Container();
-  layer.name = HIGHLIGHT_NAME;
-  layer.eventMode = "none";
-  layer.interactiveChildren = false;
-  layer.zIndex = 9999;
-  parent.addChild(layer);
-  highlightLayer = layer;
-  return layer;
-}
-
-/**
- * 清空高亮。
- * @returns {void}
- */
-function clearHighlight() {
-  highlightedRegionId = null;
-  if ( !highlightLayer || highlightLayer.destroyed ) return;
-  highlightLayer.removeChildren().forEach(child => child.destroy?.({children: true}));
-}
-
-/**
- * 用 Region 的多边形树绘制一次性高亮轮廓 + 半透明填充。
- * @param {RegionDocument} region Region 文档
- * @returns {void}
- */
-function drawHighlight(region) {
-  const layer = getHighlightLayer();
-  if ( !layer ) return;
-
-  const graphics = new PIXI.Graphics();
-  graphics.eventMode = "none";
-  let drew = false;
-
-  for ( const node of getRegionPolygonTree(region) ) {
-    const points = Array.isArray(node.path) ? node.path : null;
-    if ( !points || (points.length < 3) ) continue;
-    graphics.beginFill(0x66ccff, 0.16);
-    graphics.lineStyle(3, 0x66ccff, 0.85);
-    graphics.moveTo(points[0].x, points[0].y);
-    for ( let i = 1; i < points.length; i++ ) graphics.lineTo(points[i].x, points[i].y);
-    graphics.closePath();
-    graphics.endFill();
-    drew = true;
-  }
-
-  if ( !drew ) {
-    graphics.destroy();
-    return;
-  }
-
-  clearHighlight();
-  highlightedRegionId = region.id;
-  layer.addChild(graphics);
-}
-
-/**
- * 在屏幕上显示区域信息提示。
- * @param {RegionDocument} region Region 文档
- * @param {PIXI.FederatedPointerEvent|PointerEvent} event 指针事件
- * @returns {void}
- */
-function showRegionInfo(region, event) {
-  const elevation = region.elevation ?? {};
-  const behaviorNames = [...(region.behaviors ?? [])]
-    .map(behavior => {
-      const key = `TYPES.RegionBehavior.${behavior.type}`;
-      // 本地化失败时回退到 type 键里最后一段（例如 `er-qol.regionWall` → `regionWall`），
-      // 避免直接显示整串 type 键。
-      const fallback = String(behavior.type ?? "").split(".").pop() || behavior.type;
-      return localize(key, fallback);
-    });
-
-  const html = [
-    `<div class="erqol-region-info">`,
-    `<strong>${foundry.utils.escapeHTML(region.name || localize("ERQOL.NOTIFY.unnamedRegion", "Region"))}</strong>`,
-    `<div>${localize("ERQOL.INFO.behaviors", "Behaviors")}: ${behaviorNames.length
-      ? foundry.utils.escapeHTML(behaviorNames.join(", ")) : "-"}</div>`,
-    `<div>${localize("ERQOL.INFO.elevation", "Elevation")}: ${elevation.bottom ?? "-"} ~ ${elevation.top ?? "-"}</div>`,
-    `<div>${localize("ERQOL.INFO.shapes", "Shapes")}: ${[...getRegionPolygonTree(region)].length}</div>`,
-    `</div>`
-  ].join("");
-
-  const position = (event && "clientX" in event)
-    ? {left: event.clientX + 12, top: event.clientY + 12}
-    : undefined;
-  ui.notifications?.info?.(html, {permanent: false, ...(position ?? {})});
-}
-
-/**
- * 给单个 Region 的画布对象绑定悬停交互。
- * @param {Region} regionObject Region 画布对象
- * @returns {void}
- */
-function bindRegionHover(regionObject) {
-  if ( !regionObject || boundRegionObjects.has(regionObject) ) return;
-
-  const onOver = event => {
-    const region = regionObject.document;
-    if ( !region ) return;
-    if ( getBoolSetting(SETTINGS.HOVER_HIGHLIGHT) ) drawHighlight(region);
-    if ( getBoolSetting(SETTINGS.HOVER_INFO) ) showRegionInfo(region, event?.data?.originalEvent ?? event);
-  };
-
-  const onOut = () => {
-    clearHighlight();
-  };
-
-  // 只监听 pointer* 事件：本机 Foundry 打包的 PIXI 7.4.3 对鼠标/触控笔会**同时**派发
-  // 等价的 mouse* 事件，两个都绑会导致一次悬停触发两遍（区域信息重复弹出）。
-  regionObject.on("pointerover", onOver);
-  regionObject.on("pointerout", onOut);
-
-  // Region 对象默认 `eventMode` 由核心按 `isInteractable` 管理；只有在它明确不可交互时
-  // 才补一次，既保证我们的悬停回调能收到事件，又不去覆盖核心的状态机。
-  if ( (regionObject.eventMode === "none") || (regionObject.eventMode === undefined) ) {
-    regionObject.eventMode = "static";
-  }
-
-  boundRegionObjects.add(regionObject);
-}
-
-/**
- * 在 Region 绘制完成后绑定悬停交互。
- * @param {Region} regionObject Region 画布对象
- * @returns {void}
- */
-export function onDrawRegion(regionObject) {
-  if ( !getBoolSetting(SETTINGS.HOVER_HIGHLIGHT) && !getBoolSetting(SETTINGS.HOVER_INFO) ) return;
-  bindRegionHover(regionObject);
-}
-
-/**
- * 重新绘制时清掉旧的高亮（Region 可能已被删除）。
- * @param {Region} regionObject Region 画布对象
- * @returns {void}
- */
-export function onRefreshRegion(regionObject) {
-  if ( highlightedRegionId && (regionObject?.document?.id === highlightedRegionId) ) clearHighlight();
-}
-
-/**
- * 销毁画布级缓存（切换场景时调用）。
- * @returns {void}
- */
-export function onCanvasTearDown() {
-  clearHighlight();
-  highlightLayer = null;
-}
-
-/**
- * 注册悬停相关钩子。
- * @returns {void}
- */
-export function registerHoverFeatures() {
-  Hooks.on("drawRegion", onDrawRegion);
-  Hooks.on("refreshRegion", onRefreshRegion);
-  Hooks.on("canvasTearDown", onCanvasTearDown);
-  Hooks.on("closeSettingsConfig", () => clearHighlight());
-}
 
 /**
  * 注册新增的 Behavior type。
@@ -483,7 +293,6 @@ export function registerFeatureTypes() {
 Object.assign(erqol, {
   ANNOUNCE_TYPE,
   SETTINGS,
-  clearHighlight,
   getProbeElevation,
   getRegionSampleElevation
 });
