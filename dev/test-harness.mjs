@@ -220,7 +220,12 @@ globalThis.Hooks = {
 const SETTINGS = new Map([
   ["er-qol.hoverHighlight", true],
   ["er-qol.hoverInfo", true],
-  ["er-qol.teleportCooldown", 1000]
+  ["er-qol.wallHint", false],
+  ["er-qol.wallHintColor", "#00e5ff"],
+  ["er-qol.wallHintWidth", 2],
+  ["er-qol.wallHintOpacity", 1],
+  ["er-qol.wallHintScope", "otherLayers"],
+  ["er-qol.wallHintBlocking", []]
 ]);
 const USER = {id: "u1", isGM: true, active: true};
 const OTHER_GM = {id: "u3", isGM: true, active: false};
@@ -471,8 +476,8 @@ assert("isBehaviorType 不命中裸子类型名", common.isBehaviorType("regionW
 assert("isBehaviorType 不跨子类型误判", common.isBehaviorType("er-qol.regionWall", "regionLighting") === false);
 assert("isBehaviorType 不匹配相似键", common.isBehaviorType("er-qol.regionWallX", "regionWall") === false);
 assert("globalThis.erqol 已挂载", globalThis.erqol?.MODULE_ID === "er-qol");
-assert("BEHAVIOR_SUBTYPES 覆盖四个子类型", deepEqual(
-  [...common.BEHAVIOR_SUBTYPES].sort(), ["regionAnnounce", "regionLighting", "regionTeleport", "regionWall"]));
+assert("BEHAVIOR_SUBTYPES 覆盖三个子类型", deepEqual(
+  [...common.BEHAVIOR_SUBTYPES].sort(), ["regionAnnounce", "regionLighting", "regionWall"]));
 
 /* -------------------------------------------------------------------------- */
 /*  3. Behavior 注册（init 钩子）                                                */
@@ -483,7 +488,7 @@ console.log("\n[3] Behavior 类型注册");
 Hooks.callAll("init");
 
 const CANONICAL_TYPES = [
-  "er-qol.regionLighting", "er-qol.regionWall", "er-qol.regionAnnounce", "er-qol.regionTeleport"
+  "er-qol.regionLighting", "er-qol.regionWall", "er-qol.regionAnnounce"
 ];
 for ( const type of CANONICAL_TYPES ) {
   assert(`dataModels 注册 ${type}`, !!CONFIG.RegionBehavior.dataModels[type]);
@@ -493,10 +498,10 @@ assert("不注册任何旧模组的 type 键（含裸子类型名）",
   && !CONFIG.RegionBehavior.dataModels["region-walls.regionWall"]
   && !CONFIG.RegionBehavior.dataModels.regionLighting
   && !CONFIG.RegionBehavior.dataModels.regionWall);
-assert("dataModels 里没有多余条目（只有本模组 4 个键）",
+assert("dataModels 里没有多余条目（只有本模组 3 个键，传送已移除）",
   deepEqual(Object.keys(CONFIG.RegionBehavior.dataModels).sort(), [...CANONICAL_TYPES].sort()),
   Object.keys(CONFIG.RegionBehavior.dataModels).join(", "));
-assert("typeLabels 只给 4 个 er-qol 键",
+assert("typeLabels 只给 3 个 er-qol 键",
   deepEqual(Object.keys(CONFIG.RegionBehavior.typeLabels).sort(), [...CANONICAL_TYPES].sort()));
 assert("typeLabels 光照 = ERQOL key",
   CONFIG.RegionBehavior.typeLabels["er-qol.regionLighting"] === "ERQOL.REGION_LIGHTING.label");
@@ -616,122 +621,6 @@ announceSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(announce
 assert("Active GM 创建聊天消息", CHAT_MESSAGES.length === beforeCount + 1);
 
 /* -------------------------------------------------------------------------- */
-/*  6. 区域传送 Behavior                                                        */
-/* -------------------------------------------------------------------------- */
-
-console.log("\n[6] 区域传送 Behavior");
-
-const teleportSystem = new features.RegionTeleportBehaviorType({
-  scene: "", x: 500, y: 600, elevation: 5, consume: true, notify: true,
-  message: "", label: ""
-});
-const teleportRegion = makeRegion({name: "Portal"});
-const teleportBehavior = makeBehavior("er-qol.regionTeleport", teleportSystem, teleportRegion);
-const token = makeToken();
-
-await teleportSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(teleportSystem,
-  {name: CONST.REGION_EVENTS.TOKEN_ENTER, data: {token}});
-assert("传送写入了目标坐标与高度", deepEqual(token.updates[0], {x: 500, y: 600, elevation: 5}),
-  JSON.stringify(token.updates[0]));
-assert("传送后写入冷却标记", typeof token.flags["er-qol.teleportCooldown"] === "number");
-
-token.updates.length = 0;
-await teleportSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(teleportSystem,
-  {name: CONST.REGION_EVENTS.TOKEN_ENTER, data: {token}});
-assert("冷却期内不会再次传送", token.updates.length === 0, `实际 ${token.updates.length}`);
-
-teleportBehavior.active = false;
-token.flags["er-qol.teleportCooldown"] = 0;
-await teleportSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(teleportSystem,
-  {name: CONST.REGION_EVENTS.TOKEN_ENTER, data: {token}});
-assert("行为被禁用后不传送", token.updates.length === 0, `实际 ${token.updates.length}`);
-teleportBehavior.active = true;
-
-SETTINGS.set("er-qol.teleportCooldown", 0);
-token.updates.length = 0;
-token.flags["er-qol.teleportCooldown"] = 0;
-teleportSystem.consume = false;
-await teleportSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(teleportSystem,
-  {name: CONST.REGION_EVENTS.TOKEN_ENTER, data: {token}});
-assert("冷却设为 0 且 consume 关闭时不再写标记",
-  token.flags["er-qol.teleportCooldown"] === 0 && token.updates.length === 1);
-SETTINGS.set("er-qol.teleportCooldown", 1000);
-
-const noSceneSystem = new features.RegionTeleportBehaviorType({
-  scene: "missing-scene", x: 1, y: 1, elevation: 0, consume: false, notify: true,
-  message: "", label: ""
-});
-makeBehavior("er-qol.regionTeleport", noSceneSystem, makeRegion({name: "Bad Portal"}));
-NOTIFICATIONS.length = 0;
-await noSceneSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(noSceneSystem,
-  {name: CONST.REGION_EVENTS.TOKEN_ENTER, data: {token: makeToken()}});
-assert("目标场景不存在时给出警告且不传送", NOTIFICATIONS.some(n => n.level === "warn"));
-
-// 回归：目的地存在同名 Region，但 Token 并不在里面 → 不能取消传送。
-const destRegion = makeRegion({name: "Arrival", x: 1000, y: 1000, width: 50, height: 50});
-globalThis.canvas.scene.regions = [destRegion];
-const arrivalSystem = new features.RegionTeleportBehaviorType({
-  scene: "", x: 500, y: 600, elevation: 0, consume: true, notify: false,
-  message: "", destinationRegion: "Arrival"
-});
-makeBehavior("er-qol.regionTeleport", arrivalSystem, makeRegion({name: "Gate"}));
-const arrivalToken = makeToken({x: 0, y: 0});
-await arrivalSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(arrivalSystem,
-  {name: CONST.REGION_EVENTS.TOKEN_ENTER, data: {token: arrivalToken}});
-assert("同名目的地 Region 存在但 Token 不在其中时仍然传送",
-  arrivalToken.updates.length === 1, `实际 ${arrivalToken.updates.length}`);
-
-// 回归：Token 确实站在到达站点 Region 内 → 解除冷却且不再传送。
-const arrivedToken = makeToken({x: 1020, y: 1020});
-arrivedToken.flags["er-qol.teleportCooldown"] = 1234;
-arrivalToken.updates.length = 0;
-await arrivalSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(arrivalSystem,
-  {name: CONST.REGION_EVENTS.TOKEN_ENTER, data: {token: arrivedToken}});
-assert("站在到达站点内时解除冷却且不传送",
-  arrivedToken.flags["er-qol.teleportCooldown"] === undefined && arrivedToken.updates.length === 0,
-  `flag=${arrivedToken.flags["er-qol.teleportCooldown"]} updates=${arrivedToken.updates.length}`);
-
-// 回归：跨场景传送在玩家客户端必须给出明确警告，而不是静默失败。
-const otherScene = {id: "scene-2", name: "Upstairs", regions: [], created: [], createEmbeddedDocuments: async () => []};
-globalThis.OTHER_SCENES = new Map([["scene-2", otherScene]]);
-const crossSystem = new features.RegionTeleportBehaviorType({
-  scene: "scene-2", x: 10, y: 20, elevation: 0, consume: false, notify: true,
-  message: "", label: ""
-});
-makeBehavior("er-qol.regionTeleport", crossSystem, makeRegion({name: "Stairs"}));
-const crossToken = makeToken();
-globalThis.game.user = PLAYER;
-NOTIFICATIONS.length = 0;
-await crossSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(crossSystem,
-  {name: CONST.REGION_EVENTS.TOKEN_ENTER, data: {token: crossToken}});
-assert("玩家做跨场景传送时给出 GM 警告且不创建 Token",
-  NOTIFICATIONS.some(n => n.level === "warn" && /GM/i.test(String(n.message))));
-
-// GM 跨场景：新 Token 应带上冷却标记，避免在目标场景被立刻再传送一次。
-globalThis.game.user = USER;
-const gmCrossSystem = new features.RegionTeleportBehaviorType({
-  scene: "scene-2", x: 10, y: 20, elevation: 0, consume: true, notify: false,
-  message: "", destinationRegion: ""
-});
-makeBehavior("er-qol.regionTeleport", gmCrossSystem, makeRegion({name: "Stairs2"}));
-const gmCrossToken = makeToken();
-const createdTokens = [];
-otherScene.createEmbeddedDocuments = async (type, data) => {
-  createdTokens.push(...data);
-  return data;
-};
-await gmCrossSystem.constructor.events[CONST.REGION_EVENTS.TOKEN_ENTER].call(gmCrossSystem,
-  {name: CONST.REGION_EVENTS.TOKEN_ENTER, data: {token: gmCrossToken}});
-assert("GM 跨场景传送创建了新 Token 并删除原 Token",
-  createdTokens.length === 1 && gmCrossToken.deleted === true,
-  `created=${createdTokens.length} deleted=${gmCrossToken.deleted}`);
-assert("跨场景新 Token 带冷却标记（避免目标场景立刻再传送）",
-  typeof createdTokens[0]?.flags?.["er-qol"]?.teleportCooldown === "number",
-  JSON.stringify(createdTokens[0]?.flags ?? {}));
-globalThis.game.user = USER;
-globalThis.game.user = USER;
-
-/* -------------------------------------------------------------------------- */
 /*  7. 悬停高亮                                                                 */
 /* -------------------------------------------------------------------------- */
 
@@ -780,12 +669,15 @@ console.log("\n[8] 设置注册");
 
 assert("hoverHighlight 已注册", SETTINGS.has("er-qol.hoverHighlight"));
 assert("hoverInfo 已注册", SETTINGS.has("er-qol.hoverInfo"));
-assert("teleportCooldown 已注册", SETTINGS.has("er-qol.teleportCooldown"));
-for ( const key of ["wallHint", "wallHintColor", "wallHintWidth", "wallHintOpacity", "wallHintScope", "wallHintShowSecret"] ) {
+assert("区域传送的设置已全部删除（含 world 级冷却）",
+  !SETTINGS.has("er-qol.teleportCooldown") && !SETTINGS.has("er-qol.regionTeleport"));
+for ( const key of ["wallHint", "wallHintColor", "wallHintWidth", "wallHintOpacity", "wallHintScope", "wallHintBlocking"] ) {
   assert(`墙体提示线设置 ${key} 已注册`, SETTINGS.has(`er-qol.${key}`));
 }
 assert("墙体提示线默认关闭", SETTINGS.get("er-qol.wallHint") === false);
-assert("密门默认不参与提示", SETTINGS.get("er-qol.wallHintShowSecret") === false);
+assert("阻挡类型过滤默认为空数组（= 不过滤）",
+  deepEqual(SETTINGS.get("er-qol.wallHintBlocking"), []));
+assert("旧的 wallHintShowSecret 设置已删除", !SETTINGS.has("er-qol.wallHintShowSecret"));
 
 /* -------------------------------------------------------------------------- */
 /*  8b. 墙体提示线（其他图层显示墙体线）                                          */
@@ -803,26 +695,47 @@ assert("样式归一化：线宽/不透明度取设置值",
   deepEqual(wallHint.normalizeHintStyle({color: "#ff0000", width: 3, opacity: 0.5}).width, 3)
   && wallHint.normalizeHintStyle({color: "#ff0000", width: 3, opacity: 0.5}).opacity === 0.5);
 
-const secretWallDoc = {c: [{x: 0, y: 0}, {x: 10, y: 0}], door: 2, levels: new Set()};
-const normalWallDoc = {c: [{x: 0, y: 0}, {x: 10, y: 0}], door: 0, levels: new Set()};
-assert("默认排除密门", wallHint.isWallHintEligible(secretWallDoc, false) === false);
-assert("开启后包含密门", wallHint.isWallHintEligible(secretWallDoc, true) === true);
-assert("普通墙始终符合条件", wallHint.isWallHintEligible(normalWallDoc, false) === true);
+// 真实 WallDocument 的 c 是**扁平数组** [x0, y0, x1, y1]（core schema 校验长度为 4）。
+const FLAT = [0, 0, 10, 0];
+const normalWallDoc = {c: [...FLAT], door: 0, move: 1, sight: 1, sound: 1, light: 1};
+const secretWallDoc = {c: [...FLAT], door: 2, move: 1, sight: 1, sound: 1, light: 1};
+const invisibleWallDoc = {c: [...FLAT], door: 0, move: 0, sight: 0, sound: 0, light: 0};
+const etherealWallDoc = {c: [...FLAT], door: 0, move: 1, sight: 1, sound: 1, light: 1};
+// 只挡移动、不挡视野 → 用于验证多选过滤
+const moveOnlyDoc = {c: [...FLAT], door: 0, move: 1, sight: 0, sound: 0, light: 0};
 
-// 隐形墙 / 虚体墙在核心墙体图层里也是 GM 专用的，玩家端不该被画出来。
-const invisibleWallDoc = {c: [{x: 0, y: 0}, {x: 10, y: 0}], door: 0, sight: 0, move: 0, levels: new Set()};
-const etherealWallDoc = {
-  c: [{x: 0, y: 0}, {x: 10, y: 0}], door: 0, sight: 1, move: 1, levels: new Set(),
-  getWallCategory: () => "ethereal"
-};
-assert("隐形墙（sight=NONE 且 move=NONE）不画", wallHint.isWallHintEligible(invisibleWallDoc, false) === false);
-assert("隐形墙即使开启密门也不画", wallHint.isWallHintEligible(invisibleWallDoc, true) === false);
-assert("虚体墙不画", wallHint.isWallHintEligible(etherealWallDoc, true) === false);
-assert("GM 专用类别判定：隐形墙", wallHint.isGmOnlyWall(invisibleWallDoc) === true);
-assert("GM 专用类别判定：普通墙为 false", wallHint.isGmOnlyWall({sight: 1, move: 1}) === false);
-assert("缺少端点的墙被跳过", wallHint.getWallSegment({c: [{x: 0, y: 0}]}) === null);
-assert("端点解析正确",
-  deepEqual(wallHint.getWallSegment(normalWallDoc), {a: {x: 0, y: 0}, b: {x: 10, y: 0}}));
+assert("端点解析：真实扁平数组 [x0,y0,x1,y1]",
+  deepEqual(wallHint.getWallSegment(normalWallDoc), {a: {x: 0, y: 0}, b: {x: 10, y: 0}}),
+  JSON.stringify(wallHint.getWallSegment(normalWallDoc)));
+assert("端点解析：兼容对象数组写法",
+  deepEqual(wallHint.getWallSegment({c: [{x: 1, y: 2}, {x: 3, y: 4}]}), {a: {x: 1, y: 2}, b: {x: 3, y: 4}}));
+assert("端点解析：c[2]/c[3] 缺失时退到画布对象 b",
+  deepEqual(wallHint.getWallSegment({c: [0, 0]}, {b: {x: 5, y: 6}}), {a: {x: 0, y: 0}, b: {x: 5, y: 6}}));
+assert("端点解析：非有限坐标返回 null", wallHint.getWallSegment({c: [0, 0, NaN, 5]}) === null);
+
+// 核心要求：所有类型墙体统一绘制，密门也一样（统一颜色下无法分辨）。
+assert("空过滤 = 任何墙体都画（普通墙）", wallHint.isWallHintEligible(normalWallDoc, []) === true);
+assert("空过滤 = 任何墙体都画（密门）", wallHint.isWallHintEligible(secretWallDoc, []) === true);
+assert("空过滤 = 任何墙体都画（隐形墙）", wallHint.isWallHintEligible(invisibleWallDoc, []) === true);
+assert("空过滤 = 任何墙体都画（虚体墙）", wallHint.isWallHintEligible(etherealWallDoc, []) === true);
+assert("密门不再被特殊排除（与普通墙同色绘制）",
+  wallHint.isWallHintEligible(secretWallDoc, []) === wallHint.isWallHintEligible(normalWallDoc, []));
+
+// 按阻挡类型过滤（或关系）。
+assert("只勾「阻挡移动」：只挡移动的墙命中", wallHint.isWallHintEligible(moveOnlyDoc, ["move"]) === true);
+assert("只勾「阻挡移动」：不挡移动的墙不命中", wallHint.isWallHintEligible(invisibleWallDoc, ["move"]) === false);
+assert("只勾「阻挡视野」：只挡移动的墙不命中", wallHint.isWallHintEligible(moveOnlyDoc, ["sight"]) === false);
+assert("勾「阻挡移动 + 阻挡视野」= 或关系：只挡移动仍命中",
+  wallHint.isWallHintEligible(moveOnlyDoc, ["move", "sight"]) === true);
+assert("勾「阻挡视野 + 阻挡声音」：只挡移动不命中",
+  wallHint.isWallHintEligible(moveOnlyDoc, ["sight", "sound"]) === false);
+assert("阻挡类型过滤会剔除不认识的值",
+  deepEqual(wallHint.normalizeBlockingTypes(["move", "bogus", "move", "sight"]), ["move", "sight"]));
+assert("多选接受字符串（单个值的兼容写法）",
+  deepEqual(wallHint.normalizeBlockingTypes("sight"), ["sight"]));
+assert("wallBlocks：通道值不是 NONE 即算阻挡",
+  wallHint.wallBlocks({move: 1, sight: 0}, "move") === true
+  && wallHint.wallBlocks({move: 1, sight: 0}, "sight") === false);
 assert("otherLayers 范围在墙体图层激活时隐藏",
   wallHint.shouldHideHintOnWallsLayer("otherLayers", true) === true
   && wallHint.shouldHideHintOnWallsLayer("otherLayers", false) === false);
@@ -875,9 +788,9 @@ for ( const entry of moduleJson.esmodules ?? [] ) {
 for ( const lang of moduleJson.languages ?? [] ) {
   assert(`本地化文件存在：${lang.path}`, fs.existsSync(path.join(MODULE_DIR, lang.path)));
 }
-assert("documentTypes 覆盖四个子类型",
-  ["regionLighting", "regionWall", "regionAnnounce", "regionTeleport"]
-    .every(key => key in (moduleJson.documentTypes?.RegionBehavior ?? {})));
+assert("documentTypes 覆盖三个子类型（传送已移除）",
+  deepEqual(Object.keys(moduleJson.documentTypes?.RegionBehavior ?? {}).sort(),
+    ["regionAnnounce", "regionLighting", "regionWall"]));
 
 /* -------------------------------------------------------------------------- */
 /*  汇总                                                                        */

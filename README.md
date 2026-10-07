@@ -44,46 +44,35 @@ Post a **UI notification or chat message** when a token enters or leaves the Reg
 - visibility: everyone / GM + token owner / GM only;
 - optional sound effect with volume.
 
-### 4. Region Teleport *(new)*
-
-Teleport a token that enters the Region to **another coordinate or another scene**.
-
-- destination scene id + x/y/elevation;
-- optional **arrival Region name** — while a teleported token stands inside a Region with that name
-  on the destination scene, its cooldown is cleared so it does not bounce straight back;
-- world-level cooldown setting (default 1000 ms, `0` disables);
-- optional notification with placeholders.
-
-> Same-scene teleports are applied by the client that owns the token (or the GM), so players can walk
-> through doorways and portals themselves. **Scene-to-scene** teleport needs the GM: creating a
-> `Token` requires the `TOKEN_CREATE` permission, which players do not have by default — non-GM
-> clients get an explicit "requires the GM" notice instead of a silent failure.
-
-### 5. Hover Highlight & Region Info *(new)*
+### 4. Hover Highlight & Region Info *(new)*
 
 Client-side settings in **Configure Settings → EternalRider's QoL**:
 
 - **Hover Highlight** – draw the hovered Region's outline on top of the canvas;
 - **Hover Info** – show a small notice with the Region's behaviors and elevation range.
 
-### 6. Wall Outlines On Other Layers *(new)*
+### 5. Wall Outlines On Other Layers *(new)*
 
-Client-side setting that draws a thin line for **every player-visible wall even when the Walls layer
-is not active**, so everyone can see where the real wall lines are while moving tokens around.
+Client-side setting that draws a thin line for **every wall even when the Walls layer is not
+active**, so everyone can see where the real wall lines are while moving tokens around.
 
 - one **uniform configurable color** (with a color picker) — deliberately *not* the Walls-layer
-  colors, which would give secret doors away at a glance;
+  colors. Every wall is drawn the same way, **secret doors included**: because the lines are
+  indistinguishable, nothing stands out, whereas skipping a wall would mark its position by absence;
 - configurable width and opacity;
 - scope: only on other layers (hidden while the Walls layer is active) or always;
-- walls that core only shows to the GM (secret doors, invisible walls, ethereal walls) are **never**
-  drawn — not even with **Include Secret Doors** enabled. That option only affects secret doors you
-  explicitly want to mark, and those still use the uniform color.
+- **filter by what the wall blocks** (multi-select): block movement / sight / sound / light. Leave all
+  options unchecked — the default — to draw every wall. Checked options are combined with **OR**, so
+  checking *movement + sight* draws walls that block movement, sight, or both.
+
+> Removed feature: an earlier Region Teleport behavior was dropped — core and several other modules
+> already cover teleportation, and a teleport without an animation is of limited use.
 
 ## Compatibility
 
 - Foundry **V14** (`minimum: 14`, `verified: 14.368`). The two merged modules targeted V14 as well.
-- **er-qol namespaced behavior types only.** All four Region behaviors use `er-qol.*` type keys
-  (`er-qol.regionLighting`, `er-qol.regionWall`, `er-qol.regionAnnounce`, `er-qol.regionTeleport`).
+- **er-qol namespaced behavior types only.** All three Region behaviors use `er-qol.*` type keys
+  (`er-qol.regionLighting`, `er-qol.regionWall`, `er-qol.regionAnnounce`).
   The pre-release `region-lighting` / `region-walls` type keys are **not** carried over, so Region
   behaviors created with those keys stop working unless the old module is still enabled (in which
   case the old module keeps driving them).

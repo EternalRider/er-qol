@@ -1,9 +1,11 @@
 /**
- * er-qol 新增功能：区域提示（Announce）、悬停高亮（Hover Highlight）、区域信息（Region Info）、
- * 区域传送（Teleport）。
+ * er-qol 新增功能：区域提示（Announce）、悬停高亮（Hover Highlight）、区域信息（Region Info）。
  *
  * 这些功能都是原 `region-lighting` / `region-walls` 之外的追加能力，
  * 全部可以在模组设置里单独关闭（Behavior 类的功能则在行为自身勾选项里关闭）。
+ *
+ * 注：**区域传送已经移除**——核心自带近似能力，且不带动画的传送实用性不足，
+ * 其他模组也提供了同类功能，不再重复造轮子。
  *
  * @module er-qol/scripts/features
  */
@@ -19,8 +21,7 @@ import {
 } from "./region-common.mjs";
 import {
   SETTINGS,
-  getBoolSetting,
-  getNumberSetting
+  getBoolSetting
 } from "./settings.mjs";
 
 /* -------------------------------------------------------------------------- */
@@ -29,12 +30,6 @@ import {
 
 /** 区域提示（Announce）的 Behavior type 键。 */
 export const ANNOUNCE_TYPE = `${MODULE_ID}.regionAnnounce`;
-
-/** 区域传送（Teleport）的 Behavior type 键。 */
-export const TELEPORT_TYPE = `${MODULE_ID}.regionTeleport`;
-
-/** 传送冷却标记，写在 `token.flags["er-qol"].teleportCooldown`。 */
-const TELEPORT_COOLDOWN_FLAG = "teleportCooldown";
 
 /* -------------------------------------------------------------------------- */
 /*  Region Announce：走进/离开 Region 时提示或发聊天消息                          */
@@ -232,6 +227,31 @@ export class RegionAnnounceBehaviorType extends foundry.data.regionBehaviors.Reg
 }
 
 /**
+ * 播放 Announce 配置的提示音（若启用）。
+ *
+ * 与聊天消息分开处理：聊天消息只由 Active GM 创建（去重），
+ * 但提示音应该在每个"能收到这条播报"的客户端各自播放。
+ *
+ * @param {object} sound `system.sound`，含 `enabled` / `src` / `volume`
+ * @returns {void}
+ */
+function playAnnounceSound(sound) {
+  if ( !sound?.enabled || !sound.src ) return;
+  // Foundry v13+ 走 foundry.audio.AudioHelper，旧版本仍有全局 AudioHelper。
+  const AudioHelper = globalThis.foundry?.audio?.AudioHelper ?? globalThis.AudioHelper;
+  try {
+    AudioHelper?.play?.({
+      src: sound.src,
+      volume: sound.volume ?? 0.6,
+      autoplay: true,
+      loop: false
+    }, false);
+  } catch ( err ) {
+    console.warn(`${MODULE_ID} | announce sound failed`, err);
+  }
+}
+
+/**
  * 判断当前用户是不是"当前联网的 GM"（Active GM）。
  *
  * 用来给聊天播报去重：Foundry 会把 Region 事件广播给每个客户端，
@@ -259,246 +279,6 @@ export function registerAnnounceBehaviorTypes() {
   CONFIG.RegionBehavior.typeIcons[ANNOUNCE_TYPE] = "fa-solid fa-bullhorn";
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Region Teleport：走到出口 Region 时自动传送到目的地                            */
-/* -------------------------------------------------------------------------- */
-
-/**
- * 「区域传送」Behavior：Token 进入本 Region 时被传送到另一个场景/坐标。
- * @extends {foundry.data.regionBehaviors.RegionBehaviorType}
- */
-export class RegionTeleportBehaviorType extends foundry.data.regionBehaviors.RegionBehaviorType {
-  /** @override */
-  static LOCALIZATION_PREFIXES = ["ERQOL.REGION_TELEPORT"];
-
-  /** @override */
-  static defineSchema() {
-    const {BooleanField, NumberField, StringField} = foundry.data.fields;
-    return {
-      scene: new StringField({
-        required: true,
-        blank: true,
-        initial: "",
-        label: "ERQOL.REGION_TELEPORT.FIELDS.scene.label",
-        hint: "ERQOL.REGION_TELEPORT.FIELDS.scene.hint"
-      }),
-      x: new NumberField({
-        required: true,
-        nullable: false,
-        initial: 0,
-        label: "ERQOL.REGION_TELEPORT.FIELDS.x.label"
-      }),
-      y: new NumberField({
-        required: true,
-        nullable: false,
-        initial: 0,
-        label: "ERQOL.REGION_TELEPORT.FIELDS.y.label"
-      }),
-      elevation: new NumberField({
-        required: true,
-        nullable: false,
-        initial: 0,
-        label: "ERQOL.REGION_TELEPORT.FIELDS.elevation.label"
-      }),
-      consume: new BooleanField({
-        initial: true,
-        label: "ERQOL.REGION_TELEPORT.FIELDS.consume.label",
-        hint: "ERQOL.REGION_TELEPORT.FIELDS.consume.hint"
-      }),
-      notify: new BooleanField({
-        initial: true,
-        label: "ERQOL.REGION_TELEPORT.FIELDS.notify.label"
-      }),
-      message: new StringField({
-        required: true,
-        blank: true,
-        initial: "",
-        label: "ERQOL.REGION_TELEPORT.FIELDS.message.label",
-        hint: "ERQOL.REGION_TELEPORT.FIELDS.message.hint"
-      }),
-      destinationRegion: new StringField({
-        required: true,
-        blank: true,
-        initial: "",
-        label: "ERQOL.REGION_TELEPORT.FIELDS.destinationRegion.label",
-        hint: "ERQOL.REGION_TELEPORT.FIELDS.destinationRegion.hint"
-      })
-    };
-  }
-
-  /** @override */
-  static events = {
-    [CONST.REGION_EVENTS.TOKEN_ENTER]: this.#onRegionEvent
-  };
-
-  /**
-   * 静态事件回调：转发给实例方法处理。
-   * @param {object} event 事件对象
-   * @returns {void}
-   */
-  static #onRegionEvent(event) {
-    this.#dispatch(event);
-  }
-
-  /**
-   * 执行一次传送尝试。
-   * @param {object} event 事件对象
-   * @returns {Promise<void>} 完成后的 Promise
-   */
-  async #dispatch(event) {
-    if ( !this.behavior?.active ) return;
-    const token = event?.data?.token;
-    if ( !token ) return;
-    if ( !game.user?.isGM && !token.isOwner ) return;
-
-    const cooldown = Math.max(0, getNumberSetting(SETTINGS.TELEPORT_COOLDOWN, 1000));
-    const last = Number(token.getFlag?.(MODULE_ID, TELEPORT_COOLDOWN_FLAG) ?? 0);
-
-    const targetScene = this.scene ? game.scenes?.get(this.scene) : canvas.scene;
-    const destinationRegion = (this.destinationRegion ?? "").trim();
-
-    // 到达站点判定要放在冷却判断之前：若是刚被传送到站点上，先解除冷却，不要再触发下一次传送。
-    // 只有"Token 真的站在到达站点 Region 内"才提前返回；仅仅存在同名 Region 不算。
-    // 并且只在**同场景**时判定：跨场景时 Token 的坐标还留在原场景，
-    // 拿它去测目标场景的同名 Region 会误判成"已到达"从而取消传送。
-    const sameScene = !!targetScene && (token.parent?.id === targetScene.id);
-    if ( this.consume && sameScene && findDestinationRegion(targetScene, token, destinationRegion) ) {
-      if ( last ) await token.unsetFlag(MODULE_ID, TELEPORT_COOLDOWN_FLAG);
-      return;
-    }
-    if ( last && ((Date.now() - last) < cooldown) ) return;
-
-    if ( !targetScene ) {
-      ui.notifications.warn(localize("ERQOL.REGION_TELEPORT.NOTIFY.noScene",
-        "Region Teleport: destination scene not found."));
-      return;
-    }
-
-    const regionName = this.behavior?.parent?.name ?? "";
-    const tokenName = token.name ?? "";
-    const message = (this.message && this.message.trim().length)
-      ? format(this.message, {token: tokenName, region: regionName})
-      : format("ERQOL.NOTIFY.teleported", {token: tokenName, region: regionName});
-
-    // 跨场景：删除原 Token 并在目标场景创建一份新的。
-    if ( token.parent?.id !== targetScene.id ) {
-      // 创建 Token 需要 TOKEN_CREATE 权限（默认只有 ASSISTANT/GM 有），玩家客户端做不到，
-      // 因此这里只对 GM 生效；否则给出明确提示，而不是静默失败。
-      if ( !game.user?.isGM ) {
-        ui.notifications.warn(localize("ERQOL.REGION_TELEPORT.NOTIFY.needGm",
-          "Region Teleport: changing scene requires the GM."));
-        return;
-      }
-      const createData = token.toObject();
-      delete createData._id;
-      createData.x = this.x;
-      createData.y = this.y;
-      createData.elevation = this.elevation ?? 0;
-      // 跨场景的新 Token 也要带上冷却标记（同场景分支在 update 之后写），
-      // 否则它在目标场景立刻被同一套传送判定再抓一次。
-      if ( cooldown > 0 ) {
-        createData.flags ??= {};
-        createData.flags[MODULE_ID] ??= {};
-        createData.flags[MODULE_ID][TELEPORT_COOLDOWN_FLAG] = Date.now();
-      }
-      await targetScene.createEmbeddedDocuments("Token", [createData]);
-      await token.delete();
-      _notifyTeleport(this.notify, message, token);
-      return;
-    }
-
-    const updates = {x: this.x, y: this.y};
-    if ( Number.isFinite(this.elevation) ) updates.elevation = this.elevation;
-    await token.update(updates);
-
-    if ( cooldown > 0 ) {
-      await token.setFlag(MODULE_ID, TELEPORT_COOLDOWN_FLAG, Date.now());
-      if ( this.consume ) {
-        // 兜底：若到达站点判定没能解除冷却，冷却结束后自动清掉，避免 Token 被永久锁死。
-        setTimeout(() => {
-          token.unsetFlag(MODULE_ID, TELEPORT_COOLDOWN_FLAG).catch(() => {});
-        }, Math.max(250, cooldown));
-      }
-    }
-    _notifyTeleport(this.notify, message, token);
-  }
-}
-
-/**
- * 播放 Announce 配置的提示音（若启用）。
- *
- * 与聊天消息分开处理：聊天消息只由 Active GM 创建（去重），
- * 但提示音应该在每个"能收到这条播报"的客户端各自播放。
- *
- * @param {object} sound `system.sound`，含 `enabled` / `src` / `volume`
- * @returns {void}
- */
-function playAnnounceSound(sound) {
-  if ( !sound?.enabled || !sound.src ) return;
-  // Foundry v13+ 走 foundry.audio.AudioHelper，旧版本仍有全局 AudioHelper。
-  const AudioHelper = globalThis.foundry?.audio?.AudioHelper ?? globalThis.AudioHelper;
-  try {
-    AudioHelper?.play?.({
-      src: sound.src,
-      volume: sound.volume ?? 0.6,
-      autoplay: true,
-      loop: false
-    }, false);
-  } catch ( err ) {
-    console.warn(`${MODULE_ID} | announce sound failed`, err);
-  }
-}
-
-/**
- * 在目的地场景里按名字查找"到达站点 Region"，并确认 Token 确实站在它里面。
- *
- * 只按名字存在性判断是不够的——那会把"场景里恰好有同名 Region"误判成"已经到达"，
- * 从而把正常的传送静默取消。因此这里优先用 `TokenDocument#testInsideRegion()`，
- * 退化时用 Region 的 `testPoint()` 加 Token 当前坐标判断。
- *
- * @param {Scene} destinationScene 目的地场景
- * @param {TokenDocument} token 被传送的 Token
- * @param {string} regionName 到达站点 Region 的名称
- * @returns {RegionDocument|null} 命中的到达站点 Region，未命中为 null
- */
-function findDestinationRegion(destinationScene, token, regionName) {
-  if ( !regionName || !destinationScene?.regions ) return null;
-
-  for ( const region of destinationScene.regions ) {
-    if ( region.name !== regionName ) continue;
-    if ( typeof token.testInsideRegion === "function" ) {
-      if ( token.testInsideRegion(region) ) return region;
-      continue;
-    }
-    const point = {x: token.x, y: token.y, elevation: token.elevation ?? 0};
-    if ( region.testPoint?.(point) ) return region;
-  }
-  return null;
-}
-
-/**
- * 按需给触发的用户发提示。
- * @param {boolean} enabled 是否启用提示
- * @param {string} message 提示文本
- * @param {TokenDocument} token 触发传送的 Token
- * @returns {void}
- */
-function _notifyTeleport(enabled, message, token) {
-  if ( !enabled ) return;
-  if ( !game.user?.isGM && !token?.isOwner ) return;
-  ui.notifications.info(message);
-}
-
-/**
- * 注册「区域传送」Behavior 的 type 键。
- * @returns {void}
- */
-export function registerTeleportBehaviorTypes() {
-  CONFIG.RegionBehavior.dataModels[TELEPORT_TYPE] = RegionTeleportBehaviorType;
-  CONFIG.RegionBehavior.typeLabels[TELEPORT_TYPE] = "ERQOL.REGION_TELEPORT.label";
-  CONFIG.RegionBehavior.typeHints[TELEPORT_TYPE] = "ERQOL.REGION_TELEPORT.hint";
-  CONFIG.RegionBehavior.typeIcons[TELEPORT_TYPE] = "fa-solid fa-door-open";
-}
 
 /* -------------------------------------------------------------------------- */
 /*  悬停高亮 + 区域信息                                                          */
@@ -691,19 +471,17 @@ export function registerHoverFeatures() {
 }
 
 /**
- * 注册本模块新增的两个 Behavior type。
+ * 注册新增的 Behavior type。
  * 必须在 `Hooks.once("init")` 中调用（模组设置由 `settings.mjs` 统一注册）。
  * @returns {void}
  */
 export function registerFeatureTypes() {
   registerAnnounceBehaviorTypes();
-  registerTeleportBehaviorTypes();
 }
 
 // 把新增功能一并挂到模组 API 上，方便宏里复用。
 Object.assign(erqol, {
   ANNOUNCE_TYPE,
-  TELEPORT_TYPE,
   SETTINGS,
   clearHighlight,
   getProbeElevation,

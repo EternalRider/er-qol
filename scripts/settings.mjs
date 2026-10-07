@@ -22,16 +22,14 @@ export {MODULE_ID};
 /**
  * 全部设置键。
  *
- * 分三段：`REGION_*` 是 Region 行为/悬停相关的通用设置，
- * `TELEPORT_*` 是区域传送，`WALL_HINT` 是"在非墙体图层显示墙体提示线"。
+ * 分两段：`REGION_*` 是 Region 行为/悬停相关的通用设置，
+ * `WALL_HINT` 是"在非墙体图层显示墙体提示线"。
  */
 export const SETTINGS = Object.freeze({
   /** 悬停 Region 时高亮其轮廓（客户端）。 */
   HOVER_HIGHLIGHT: "hoverHighlight",
   /** 悬停 Region 时显示简要信息（客户端）。 */
   HOVER_INFO: "hoverInfo",
-  /** 被传送后的冷却毫秒数（世界级）。 */
-  TELEPORT_COOLDOWN: "teleportCooldown",
   /** 墙体提示线：总开关。 */
   WALL_HINT: Object.freeze({
     ENABLED: "wallHint",
@@ -39,8 +37,22 @@ export const SETTINGS = Object.freeze({
     WIDTH: "wallHintWidth",
     OPACITY: "wallHintOpacity",
     SCOPE: "wallHintScope",
-    SHOW_SECRET: "wallHintShowSecret"
+    /** 多选：按墙体阻挡类型过滤；空集合 = 任何墙体都画。 */
+    BLOCKING: "wallHintBlocking"
   })
+});
+
+/**
+ * 墙体提示线的"按阻挡类型过滤"可选项。
+ *
+ * 空集合表示不过滤；否则是**或**关系（勾了"移动"就画所有阻挡移动的墙，
+ * 勾了"移动 + 视野"就画阻挡任一项的墙）。
+ */
+export const WALL_HINT_BLOCKING_CHOICES = Object.freeze({
+  move: "ERQOL.SETTINGS.wallHintBlocking.move",
+  sight: "ERQOL.SETTINGS.wallHintBlocking.sight",
+  sound: "ERQOL.SETTINGS.wallHintBlocking.sound",
+  light: "ERQOL.SETTINGS.wallHintBlocking.light"
 });
 
 /**
@@ -69,16 +81,6 @@ export function registerModuleSettings() {
     config: true,
     type: Boolean,
     default: true
-  });
-
-  game.settings.register(MODULE_ID, SETTINGS.TELEPORT_COOLDOWN, {
-    name: "ERQOL.SETTINGS.teleportCooldown.name",
-    hint: "ERQOL.SETTINGS.teleportCooldown.hint",
-    scope: "world",
-    config: true,
-    type: Number,
-    range: {min: 0, max: 10000, step: 100},
-    default: 1000
   });
 
   registerWallHintSettings();
@@ -149,14 +151,38 @@ export function registerWallHintSettings() {
     default: "otherLayers"
   });
 
-  game.settings.register(MODULE_ID, HINT.SHOW_SECRET, {
-    name: "ERQOL.SETTINGS.wallHintShowSecret.name",
-    hint: "ERQOL.SETTINGS.wallHintShowSecret.hint",
+  game.settings.register(MODULE_ID, HINT.BLOCKING, {
+    name: "ERQOL.SETTINGS.wallHintBlocking.name",
+    hint: "ERQOL.SETTINGS.wallHintBlocking.hint",
     scope: "client",
     config: true,
-    type: Boolean,
-    default: false
+    // 多选：DataField 实例 + choices 才会渲染成多选框（普通 String 是单选框）。
+    // 空数组 = 不过滤，任何墙体都画。
+    type: getBlockingFieldType(),
+    choices: {...WALL_HINT_BLOCKING_CHOICES},
+    default: []
   });
+}
+
+/**
+ * 取用于"按阻挡类型过滤"设置的字段类型：优先 `foundry.data.fields.ArrayField(StringField)`，
+ * 核心会据此渲染**多选**控件；字段不可用时退回 `Array`（`type === Array` 走 core 的
+ * `ArrayField(StringField)` 分支，同样是多选）。
+ *
+ * @returns {Function|object} 字段构造函数或字段实例
+ */
+function getBlockingFieldType() {
+  const fields = globalThis.foundry?.data?.fields;
+  if ( typeof fields?.ArrayField !== "function" || typeof fields?.StringField !== "function" ) return Array;
+  try {
+    return new fields.ArrayField(new fields.StringField({required: true, blank: false}), {
+      required: true,
+      nullable: false,
+      initial: []
+    });
+  } catch ( err ) {
+    return Array;
+  }
 }
 
 /**
@@ -189,6 +215,28 @@ export function isWallHintSettingKey(key) {
   if ( !String(key ?? "").startsWith(prefix) ) return false;
   const localKey = String(key).slice(prefix.length);
   return Object.values(SETTINGS.WALL_HINT).includes(localKey);
+}
+
+/**
+ * 读取字符串数组设置（多选类）。
+ *
+ * 兼容三种存法：真正的数组、`Set`（字段类型是 SetField 时），以及单值（旧数据）。
+ *
+ * @param {string} key 设置键
+ * @param {string[]} [fallback=[]] 读取失败时的回退值
+ * @returns {string[]} 字符串数组
+ */
+export function getArraySetting(key, fallback = []) {
+  let value;
+  try {
+    value = game.settings.get(MODULE_ID, key);
+  } catch ( err ) {
+    return [...fallback];
+  }
+  if ( value instanceof Set ) return [...value].map(String);
+  if ( Array.isArray(value) ) return value.map(String);
+  if ( (value === null) || (value === undefined) || (value === "") ) return [...fallback];
+  return [String(value)];
 }
 
 /**

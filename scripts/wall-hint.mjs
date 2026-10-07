@@ -10,8 +10,10 @@
  * Foundry 的墙体颜色由 `Wall#_getWallColor()` 按墙的类别决定，其中**密门（`secret`）**
  * 的类别色是 `0xA612D4`（紫色），普通门/墙各自有别的颜色。如果这里复用核心的颜色逻辑，
  * 画出来的提示线就会**按类别上色**——密门那根线会变成紫色，等于当着玩家的面把密门标出来。
- * 因此本模块**只**使用自己的单一可配置颜色（`wallHintColor`），颜色与墙体类别完全无关；
- * 密门另外用 `wallHintShowSecret` 单独过滤（默认不画）。
+ * 因此本模块**只**使用自己的单一可配置颜色（`wallHintColor`），颜色与墙体类别完全无关。
+ *
+ * 另外：**所有类型的墙都照常画**，密门也不例外——正因为它和其他墙长得一模一样，
+ * 才不会被认出来；反过来把密门排除掉，缺一根线的位置反而暴露了它。
  *
  * ## 结构
  *
@@ -24,7 +26,13 @@
 
 // `MODULE_ID` 与设置读取都从 settings.mjs 取：该文件统一注册设置，并 re-export 模组 id，
 // 因此本模块只需要一个 import 点就能拿到全部依赖。
-import { MODULE_ID, getBoolSetting, getNumberSetting, getStringSetting } from "./settings.mjs";
+import {
+  MODULE_ID,
+  getBoolSetting,
+  getNumberSetting,
+  getStringSetting,
+  getArraySetting
+} from "./settings.mjs";
 
 /* -------------------------------------------------------------------------- */
 /*  常量                                                                        */
@@ -42,7 +50,7 @@ export const WALL_HINT_SETTINGS = Object.freeze({
   WIDTH: "wallHintWidth",
   OPACITY: "wallHintOpacity",
   SCOPE: "wallHintScope",
-  SHOW_SECRET: "wallHintShowSecret"
+  BLOCKING: "wallHintBlocking"
 });
 
 /** `wallHintScope` 的取值。 */
@@ -148,78 +156,126 @@ export function normalizeWallHintScope(scope) {
 /**
  * 取出墙体文档的两个端点。
  *
- * 数据来源（按优先级）：
- * 1. `doc.c`：`{x, y, elevation}[]`，通常有 `[0]`、`[1]`；
- * 2. `wallObject.b`：画布对象上的第二个端点（`c[1]` 缺失时退化使用）；
- * 3. 两者都不全时返回 `null`（调用方跳过这面墙，而不是画一条错线）。
+ * **注意 `WallDocument#c` 是扁平数组 `[x0, y0, x1, y1]`**（核心 schema 是
+ * `ArrayField(NumberField)` 且校验长度为 4，见 core `common/documents/wall.mjs`），
+ * 不是 `{x, y}[]`——按对象取点会让每面墙都解析失败、整个功能静默不画。
+ * 本函数同时兼容两种写法，避免上游或其它数据源换表示时再次静默失效：
+ *
+ * 1. 扁平数组 `[x0, y0, x1, y1]`（真实 `WallDocument`）；
+ * 2. 对象数组 `[{x, y}, {x, y}]`（画布对象 `Wall#a` / `Wall#b` 那种形状）；
+ * 3. 都拿不到时退回 `wallObject.b` 作为第二端点；
+ * 4. 仍不全则返回 `null`（调用方跳过这面墙，而不是画一条错线）。
  *
  * @param {WallDocument} doc 墙体文档
  * @param {Wall|null} [wallObject] 对应的画布对象（`canvas.walls.placeables` 里的元素）
  * @returns {{a: {x: number, y: number}, b: {x: number, y: number}}|null} 端点，缺失时为 null
  */
 export function getWallSegment(doc, wallObject = null) {
-  const coords = Array.isArray(doc?.c) ? doc.c : null;
-  const a = coords?.[0] ?? null;
-  const b = coords?.[1] ?? wallObject?.b ?? null;
-  if ( !a || !b ) return null;
+  const {a, b} = getWallEndpoints(doc?.c);
+  const fallbackB = b ?? objectPoint(wallObject?.b);
+  if ( !a || !fallbackB ) return null;
+  return {a, b: fallbackB};
+}
 
-  const ax = Number(a.x);
-  const ay = Number(a.y);
-  const bx = Number(b.x);
-  const by = Number(b.y);
-  if ( ![ax, ay, bx, by].every(Number.isFinite) ) return null;
+/**
+ * 从 `WallDocument#c` 解析两端点，兼容扁平数组与对象数组。
+ *
+ * @param {Array<number>|Array<{x: number, y: number}>|null|undefined} coords 原始坐标
+ * @returns {{a: {x: number, y: number}|null, b: {x: number, y: number}|null}} 两端点
+ */
+function getWallEndpoints(coords) {
+  if ( !Array.isArray(coords) ) return {a: null, b: null};
 
-  return {a: {x: ax, y: ay}, b: {x: bx, y: by}};
+  // 形态一：扁平数组 [x0, y0, x1, y1]
+  if ( typeof coords[0] === "number" ) {
+    return {
+      a: finitePoint(coords[0], coords[1]),
+      b: finitePoint(coords[2], coords[3])
+    };
+  }
+
+  // 形态二：对象数组 [{x, y}, {x, y}]
+  return {
+    a: objectPoint(coords[0]),
+    b: objectPoint(coords[1])
+  };
+}
+
+/**
+ * 把 `{x, y}` 形状的点转成有限数点。
+ *
+ * @param {{x: number, y: number}|null|undefined} point 候选点
+ * @returns {{x: number, y: number}|null} 合法的点，或 null
+ */
+function objectPoint(point) {
+  if ( !point ) return null;
+  return finitePoint(point.x, point.y);
+}
+
+/**
+ * 用两个分量构造一个有限数点。
+ *
+ * @param {number} x X 坐标
+ * @param {number} y Y 坐标
+ * @returns {{x: number, y: number}|null} 合法的点，或 null
+ */
+function finitePoint(x, y) {
+  const px = Number(x);
+  const py = Number(y);
+  if ( !Number.isFinite(px) || !Number.isFinite(py) ) return null;
+  return {x: px, y: py};
 }
 
 /**
  * 判断一面墙是否应该画提示线。
  *
- * 过滤规则（都是"别把 GM 视图里的东西画给玩家"）：
+ * **不做任何类别判别**：密门、隐形墙、虚体墙都用**同一个颜色**照常画。
+ * 原因是"统一颜色"本身就足够——每根线长得一模一样，玩家无法据此分辨哪根是密门；
+ * 反过来若把密门排除掉，缺了一根线的位置反而等于把密门标了出来。
  *
- * 1. **密门**：`showSecret` 为 false 时跳过 `door === CONST.WALL_DOOR_TYPES.SECRET`；
- * 2. **隐形墙**：`sight === NONE && move === NONE` 的墙在核心墙体图层里也是 GM 专用的
- *    （整层 `visible: game.user.isGM`），玩家的画布上根本没有它们的视觉信息，
- *    我们若照画就等于把 GM 特意藏起来的墙位画出来；
- * 3. **虚体墙（ethereal）**：同属核心只在墙体图层给 GM 看的类别。
- *
- * **不做** `game.user.isGM` 门禁：这是纯客户端可视化，是否看密门交给设置决定；
- * 但默认设置必须保证"不泄露 GM 视图"，所以要靠上面的类别过滤而不是靠玩家的自觉。
+ * 唯一的过滤来自设置：`wallHintBlocking`（多选，空集合 = 不过滤）。
+ * 勾选了若干"阻挡类型"时，只画**至少阻挡其中一项**的墙（或关系）。
  *
  * @param {WallDocument} doc 墙体文档
- * @param {boolean} [showSecret=false] 是否显示密门提示线
+ * @param {string[]} [blocking=[]] 需要命中的阻挡类型（`move` / `sight` / `sound` / `light`）
  * @returns {boolean} 应该绘制时返回 true
  */
-export function isWallHintEligible(doc, showSecret = false) {
+export function isWallHintEligible(doc, blocking = []) {
   if ( !doc ) return false;
-  if ( isGmOnlyWall(doc) ) return false;
-  if ( showSecret ) return true;
-  return doc.door !== getSecretDoorType();
+  const wanted = normalizeBlockingTypes(blocking);
+  if ( !wanted.length ) return true;
+  return wanted.some(type => wallBlocks(doc, type));
+}
+
+/** 允许用于过滤的阻挡类型（对应 `WallDocument` 上真实存在的四个通道）。 */
+export const WALL_HINT_BLOCKING_TYPES = Object.freeze(["move", "sight", "sound", "light"]);
+
+/**
+ * 规范化阻挡类型过滤值：去重、丢掉不认识的值、保持稳定顺序。
+ *
+ * @param {Iterable<string>|string|undefined} blocking 原始设置值
+ * @returns {string[]} 规范化后的类型数组
+ */
+export function normalizeBlockingTypes(blocking) {
+  const values = (blocking === null) || (blocking === undefined)
+    ? []
+    : (typeof blocking === "string" ? [blocking] : [...blocking]);
+  const picked = new Set(values.map(String));
+  return WALL_HINT_BLOCKING_TYPES.filter(type => picked.has(type));
 }
 
 /**
- * 判断一面墙是否属于"核心只在墙体图层给 GM 看"的类别。
+ * 判断一面墙是否在某个通道上"有阻挡效果"。
  *
- * 判据：隐形墙（`sight` 与 `move` 都是 NONE）或虚体墙（`ethereal`）。
- * 类别名优先用文档自带的 `getWallCategory()`，退化用 sense 值判断。
+ * 判据是"该通道的值不是 `NONE`"（即 `NORMAL` / `LIMITED` / 距离衰减等都算阻挡）。
  *
  * @param {WallDocument} doc 墙体文档
- * @returns {boolean} 属于 GM 专用类别时返回 true
+ * @param {string} type 通道名（`move` / `sight` / `sound` / `light`）
+ * @returns {boolean} 该通道有阻挡效果时返回 true
  */
-export function isGmOnlyWall(doc) {
-  if ( !doc ) return false;
-
-  let category = "";
-  try {
-    category = String(doc.getWallCategory?.() ?? "");
-  } catch ( err ) {
-    category = "";
-  }
-  if ( category === "invisible" || category === "ethereal" ) return true;
-
-  // 退化判据：GM 视图里的"隐形墙"就是既不挡视线也不挡移动的墙。
-  const none = getSenseNone();
-  return (doc.sight === none) && (doc.move === none);
+export function wallBlocks(doc, type) {
+  if ( !doc || !WALL_HINT_BLOCKING_TYPES.includes(type) ) return false;
+  return Number(doc[type]) !== getSenseNone();
 }
 
 /**
@@ -237,15 +293,6 @@ export function shouldHideHintOnWallsLayer(scope, wallsActive) {
 /* -------------------------------------------------------------------------- */
 /*  内部辅助                                                                     */
 /* -------------------------------------------------------------------------- */
-
-/**
- * 取密门对应的 `door` 值（`CONST.WALL_DOOR_TYPES.SECRET`，本机为 2）。
- *
- * @returns {number} 密门的 door 值；常量缺失时回退 2
- */
-function getSecretDoorType() {
-  return globalThis.CONST?.WALL_DOOR_TYPES?.SECRET ?? 2;
-}
 
 /**
  * 取 `CONST.EDGE_SENSE_TYPES.NONE`（表示该墙在该通道上完全不生效，本机为 0）。
@@ -468,7 +515,7 @@ export function installWallHint() {
  * 立即重绘全部墙体提示线（设置变更、场景变化或手动刷新时调用）。
  *
  * 行为：先清空旧线段；`wallHint` 关闭时只隐藏容器；开启时按当前颜色/线宽/透明度、
- * scope 与密门设置重画。任何情况下都不写数据、不改墙体。
+ * scope 与阻挡类型过滤重画。任何情况下都不写数据、不改墙体。
  *
  * @returns {void}
  */
@@ -485,15 +532,25 @@ export function refreshWallHint() {
 
   applyScopeVisibility();
 
-  const showSecret = getBoolSetting(WALL_HINT_SETTINGS.SHOW_SECRET, false);
+  const blocking = getArraySetting(WALL_HINT_SETTINGS.BLOCKING, []);
   const style = resolveWallHintStyle();
 
+  let drawn = 0;
+  let skipped = 0;
   for ( const entry of collectWallEntries() ) {
     const doc = entry?.document ?? entry;
-    if ( !isWallHintEligible(doc, showSecret) ) continue;
+    if ( !isWallHintEligible(doc, blocking) ) {
+      skipped += 1;
+      continue;
+    }
 
     const segment = getWallSegment(doc, entry);
-    if ( !segment ) continue;
+    if ( !segment ) {
+      // 端点解析失败通常是数据形态变了（例如 c 不再是扁平数组）——这正是
+      // "开了设置却一条线都没有"的静默失效形态，所以留一条可定位的警告。
+      skipped += 1;
+      continue;
+    }
 
     const graphics = new PIXI.Graphics();
     graphics.eventMode = "none";
@@ -501,5 +558,34 @@ export function refreshWallHint() {
     graphics.moveTo(segment.a.x, segment.a.y);
     graphics.lineTo(segment.b.x, segment.b.y);
     layer.addChild(graphics);
+    drawn += 1;
   }
+
+  logWallHintSummary(drawn, skipped, blocking);
+}
+
+/** 已提示过"一条线都没画出来"的场景，避免每次重绘都刷屏。 */
+let warnedEmptyDraw = false;
+
+/**
+ * 在"开启但一条线都没画出来"时输出一次可定位的警告。
+ *
+ * 正常场景（墙上确实没有符合过滤条件的墙）不刷日志；
+ * 只有明显异常（一条都没画、且有墙被跳过）才提示，避免静默失效。
+ *
+ * @param {number} drawn 实际画出的线段数
+ * @param {number} skipped 被跳过的墙体数
+ * @param {string[]} blocking 当前阻挡类型过滤
+ * @returns {void}
+ */
+function logWallHintSummary(drawn, skipped, blocking) {
+  if ( drawn > 0 ) {
+    warnedEmptyDraw = false;
+    return;
+  }
+  if ( !skipped || warnedEmptyDraw ) return;
+  warnedEmptyDraw = true;
+  console.warn(`${MODULE_ID} | 墙体提示线已开启，但当前场景一条都没画出来`
+    + `（跳过 ${skipped} 面墙${blocking.length ? `，阻挡类型过滤 = ${blocking.join("/")}` : ""}）。`
+    + " 若墙确实存在，多半是端点解析失败或过滤条件过严。");
 }

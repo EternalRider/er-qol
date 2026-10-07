@@ -3,15 +3,13 @@
     "RegionBehavior": {
       "er-qol.regionLighting": "Region Lighting",
       "er-qol.regionWall": "Region Walls",
-      "er-qol.regionAnnounce": "Region Announce",
-      "er-qol.regionTeleport": "Region Teleport"
+      "er-qol.regionAnnounce": "Region Announce"
     },
     "HINTS": {
       "RegionBehavior": {
         "er-qol.regionLighting": "Emit light or darkness using the Region's full shape, including its elevation range.",
         "er-qol.regionWall": "Turn the Region boundary into a wall-like blocker for movement, light, sight, sound, and optionally darkness.",
-        "er-qol.regionAnnounce": "Post a notification or chat message when a token enters or leaves this Region.",
-        "er-qol.regionTeleport": "Teleport tokens that enter this Region to a destination scene or coordinate."
+        "er-qol.regionAnnounce": "Post a notification or chat message when a token enters or leaves this Region."
       }
     }
   },
@@ -121,45 +119,6 @@
         "gm": "GM Only"
       }
     },
-    "REGION_TELEPORT": {
-      "label": "Region Teleport",
-      "hint": "Teleport tokens that enter this Region to a destination scene or coordinate.",
-      "FIELDS": {
-        "scene": {
-          "label": "Destination Scene",
-          "hint": "Scene id to teleport to. Leave empty to teleport within the current scene."
-        },
-        "x": {
-          "label": "Destination X"
-        },
-        "y": {
-          "label": "Destination Y"
-        },
-        "elevation": {
-          "label": "Destination Elevation"
-        },
-        "consume": {
-          "label": "Use Cooldown",
-          "hint": "When enabled, a teleported token cannot trigger the same destination Region again until the cooldown expires."
-        },
-        "notify": {
-          "label": "Notify Owner",
-          "hint": "Show a notification to the GM and the token's owner after the teleport."
-        },
-        "message": {
-          "label": "Notify Message",
-          "hint": "Optional. Supports {token} and {region}."
-        },
-        "destinationRegion": {
-          "label": "Arrival Region Name",
-          "hint": "Optional. Name of the Region the token lands in. Standing inside that Region on the destination scene clears the cooldown."
-        }
-      },
-      "NOTIFY": {
-        "noScene": "Region Teleport: destination scene was not found.",
-        "needGm": "Region Teleport: changing scene requires the GM."
-      }
-    },
     "SETTINGS": {
       "hoverHighlight": {
         "name": "Hover Highlight",
@@ -168,10 +127,6 @@
       "hoverInfo": {
         "name": "Hover Info",
         "hint": "Show a small info notice (behaviors and elevation range) when hovering a Region."
-      },
-      "teleportCooldown": {
-        "name": "Teleport Cooldown (ms)",
-        "hint": "How long a token is immune to Region Teleport after being teleported. Set to 0 to disable."
       },
       "wallHint": {
         "name": "Wall Outlines On Other Layers",
@@ -195,9 +150,13 @@
         "otherLayers": "Only On Other Layers",
         "always": "Always"
       },
-      "wallHintShowSecret": {
-        "name": "Include Secret Doors",
-        "hint": "Also draw the outline hint for secret doors. Off by default: the hint would reveal them to players."
+      "wallHintBlocking": {
+        "name": "Wall Outline Filter",
+        "hint": "Draw outlines only for walls that block at least one of the checked types. Leave all unchecked to draw every wall. Secret doors are drawn like any other wall.",
+        "move": "Blocks Movement",
+        "sight": "Blocks Sight",
+        "sound": "Blocks Sound",
+        "light": "Blocks Light"
       }
     },
     "INFO": {
@@ -208,7 +167,6 @@
     "NOTIFY": {
       "regionEntry": "{token} entered region {region}.",
       "regionExit": "{token} left region {region}.",
-      "teleported": "{token} was teleported by region {region}.",
       "unnamedRegion": "Region"
     }
   }

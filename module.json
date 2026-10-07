@@ -1,7 +1,7 @@
 {
   "id": "er-qol",
   "title": "EternalRider's QoL",
-  "description": "Region quality-of-life bundle: Region-driven lighting/darkness, wall-like Region boundaries, region announcements, region teleport, hover highlight and region info. Merges and supersedes the region-lighting and region-walls modules.",
+  "description": "Region quality-of-life bundle: Region-driven lighting/darkness, wall-like Region boundaries, region announcements, hover highlight and region info, plus an optional wall-outline overlay for other layers. Merges and supersedes the region-lighting and region-walls modules.",
   "version": "1.0.0",
   "license": "MIT",
   "authors": [
@@ -20,8 +20,7 @@
     "RegionBehavior": {
       "regionLighting": {},
       "regionWall": {},
-      "regionAnnounce": {},
-      "regionTeleport": {}
+      "regionAnnounce": {}
     }
   },
   "languages": [

@@ -5,9 +5,8 @@
  * （原先两处共约 120 行重复代码），以及若干跨 Behavior 复用的辅助函数。
  *
  * 命名约定：er-qol 是一个**全新模组**，Region Behavior 的 type 键一律使用自己的命名空间
- * （`er-qol.regionLighting` / `er-qol.regionWall` / `er-qol.regionAnnounce` /
- * `er-qol.regionTeleport`），**不保留**旧模组的 type 键兼容别名——
- * 旧的两个模组从未发布过，接受其数据失效。
+ * （`er-qol.regionLighting` / `er-qol.regionWall` / `er-qol.regionAnnounce`），
+ * **不保留**旧模组的 type 键兼容别名——旧的两个模组从未发布过，接受其数据失效。
  *
  * 约定：**本文件不依赖任何 Behavior 类**，只依赖 Foundry 全局对象（canvas / CONST / PIXI 等），
  * 因此可以被任意子模块安全导入。
@@ -28,8 +27,7 @@ export const WALL_TYPE = `${MODULE_ID}.regionWall`;
 export const BEHAVIOR_SUBTYPES = Object.freeze([
   "regionLighting",
   "regionWall",
-  "regionAnnounce",
-  "regionTeleport"
+  "regionAnnounce"
 ]);
 
 /**

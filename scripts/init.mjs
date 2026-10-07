@@ -20,15 +20,14 @@ import {
 import {registerModuleSettings} from "./settings.mjs";
 import {registerLightingBehaviorTypes, installLighting} from "./region-lighting.mjs";
 import {registerWallBehaviorTypes, installWalls} from "./region-walls.mjs";
-import {registerFeatureTypes, registerHoverFeatures, ANNOUNCE_TYPE, TELEPORT_TYPE} from "./features.mjs";
+import {registerFeatureTypes, registerHoverFeatures, ANNOUNCE_TYPE} from "./features.mjs";
 import {installWallHint} from "./wall-hint.mjs";
 
 /** 子类型 → er-qol 的 type 键。 */
 const TYPE_BY_SUBTYPE = Object.freeze({
   regionLighting: LIGHTING_TYPE,
   regionWall: WALL_TYPE,
-  regionAnnounce: ANNOUNCE_TYPE,
-  regionTeleport: TELEPORT_TYPE
+  regionAnnounce: ANNOUNCE_TYPE
 });
 
 /**
@@ -42,8 +41,7 @@ function registerTypeLocalization() {
   const types = [
     [LIGHTING_TYPE, "ERQOL.REGION_LIGHTING.label", "ERQOL.REGION_LIGHTING.hint", "fa-solid fa-lightbulb"],
     [WALL_TYPE, "ERQOL.REGION_WALLS.label", "ERQOL.REGION_WALLS.hint", "fa-solid fa-bars"],
-    [ANNOUNCE_TYPE, "ERQOL.REGION_ANNOUNCE.label", "ERQOL.REGION_ANNOUNCE.hint", "fa-solid fa-bullhorn"],
-    [TELEPORT_TYPE, "ERQOL.REGION_TELEPORT.label", "ERQOL.REGION_TELEPORT.hint", "fa-solid fa-door-open"]
+    [ANNOUNCE_TYPE, "ERQOL.REGION_ANNOUNCE.label", "ERQOL.REGION_ANNOUNCE.hint", "fa-solid fa-bullhorn"]
   ];
 
   for ( const [type, label, hint, icon] of types ) {

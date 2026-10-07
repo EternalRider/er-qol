@@ -3,15 +3,13 @@
     "RegionBehavior": {
       "er-qol.regionLighting": "区域光照",
       "er-qol.regionWall": "区域墙体",
-      "er-qol.regionAnnounce": "区域提示",
-      "er-qol.regionTeleport": "区域传送"
+      "er-qol.regionAnnounce": "区域提示"
     },
     "HINTS": {
       "RegionBehavior": {
         "er-qol.regionLighting": "使用 Region 的完整形状与高度范围来发出光照或黑暗。",
         "er-qol.regionWall": "把 Region 边界变成类似墙体的阻挡物，可分别阻挡移动、光照、视觉、声音与黑暗。",
-        "er-qol.regionAnnounce": "Token 进入或离开这个 Region 时发送通知或聊天消息。",
-        "er-qol.regionTeleport": "Token 进入这个 Region 时被传送到指定场景或坐标。"
+        "er-qol.regionAnnounce": "Token 进入或离开这个 Region 时发送通知或聊天消息。"
       }
     }
   },
@@ -121,45 +119,6 @@
         "gm": "仅 GM"
       }
     },
-    "REGION_TELEPORT": {
-      "label": "区域传送",
-      "hint": "Token 进入这个 Region 时被传送到指定场景或坐标。",
-      "FIELDS": {
-        "scene": {
-          "label": "目标场景",
-          "hint": "目标场景 id。留空表示在当前场景内传送。"
-        },
-        "x": {
-          "label": "目标 X"
-        },
-        "y": {
-          "label": "目标 Y"
-        },
-        "elevation": {
-          "label": "目标高度"
-        },
-        "consume": {
-          "label": "使用冷却",
-          "hint": "启用后，刚被传送的 Token 在冷却结束前不会再触发同一个目标 Region。"
-        },
-        "notify": {
-          "label": "通知所有者",
-          "hint": "传送后向 GM 与 Token 所有者显示一条通知。"
-        },
-        "message": {
-          "label": "通知文本",
-          "hint": "可选。支持 {token} 与 {region} 占位符。"
-        },
-        "destinationRegion": {
-          "label": "到达站点 Region 名称",
-          "hint": "可选。填写 Token 落地所在 Region 的名称；站在该 Region 内会清除冷却，避免来回弹跳。"
-        }
-      },
-      "NOTIFY": {
-        "noScene": "区域传送：找不到目标场景。",
-        "needGm": "区域传送：跨场景传送需要 GM 执行。"
-      }
-    },
     "SETTINGS": {
       "hoverHighlight": {
         "name": "悬停高亮",
@@ -168,10 +127,6 @@
       "hoverInfo": {
         "name": "悬停信息",
         "hint": "鼠标悬停在 Region 上时显示简要信息（包含的行为与高度范围）。"
-      },
-      "teleportCooldown": {
-        "name": "传送冷却（毫秒）",
-        "hint": "Token 被传送后多久内不再触发区域传送。设为 0 关闭冷却。"
       },
       "wallHint": {
         "name": "其他图层显示墙体线",
@@ -195,9 +150,13 @@
         "otherLayers": "仅其他图层",
         "always": "始终显示"
       },
-      "wallHintShowSecret": {
-        "name": "包含密门",
-        "hint": "是否也为密门绘制提示线。默认关闭：画出来等于直接告诉玩家这里有密门。"
+      "wallHintBlocking": {
+        "name": "墙体线过滤（阻挡类型）",
+        "hint": "只为「至少阻挡所勾选类型之一」的墙体绘制提示线。全部不勾选 = 所有墙体都绘制。密门与普通墙一样绘制。",
+        "move": "阻挡移动",
+        "sight": "阻挡视野",
+        "sound": "阻挡声音",
+        "light": "阻挡光照"
       }
     },
     "INFO": {
@@ -208,7 +167,6 @@
     "NOTIFY": {
       "regionEntry": "{token} 进入了区域「{region}」。",
       "regionExit": "{token} 离开了区域「{region}」。",
-      "teleported": "{token} 被区域「{region}」传送。",
       "unnamedRegion": "未命名区域"
     }
   }
