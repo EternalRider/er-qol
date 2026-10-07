@@ -52,7 +52,7 @@ function registerTypeLocalization() {
 }
 
 /**
- * 自检 4 个 Behavior type 的 dataModel 是否都已注册，缺失时打印可定位的错误。
+ * 自检 3 个 Behavior type 的 dataModel 是否都已注册，缺失时打印可定位的错误。
  *
  * @returns {string[]} 缺失的 type 键
  */

@@ -156,30 +156,40 @@ export function registerWallHintSettings() {
     hint: "ERQOL.SETTINGS.wallHintBlocking.hint",
     scope: "client",
     config: true,
-    // 多选：DataField 实例 + choices 才会渲染成多选框（普通 String 是单选框）。
-    // 空数组 = 不过滤，任何墙体都画。
+    // 多选：必须是实现了 `_toInput` 的字段实例（见 getBlockingFieldType 的说明），
+    // 而且 choices 要挂在**字段**上，core 不会把 setting.choices 传进 DataField。
+    // 空集合 = 不过滤，任何墙体都画。
     type: getBlockingFieldType(),
-    choices: {...WALL_HINT_BLOCKING_CHOICES},
     default: []
   });
 }
 
 /**
- * 取用于"按阻挡类型过滤"设置的字段类型：优先 `foundry.data.fields.ArrayField(StringField)`，
- * 核心会据此渲染**多选**控件；字段不可用时退回 `Array`（`type === Array` 走 core 的
- * `ArrayField(StringField)` 分支，同样是多选）。
+ * 取用于"按阻挡类型过滤"设置的字段类型。
+ *
+ * **必须用 `SetField`（它实现了 `_toInput` → 多选控件）**：
+ * - `ArrayField` 没有 `_toInput`，基类会抛错、`formGroup` 捕到后渲染成**空字符串**，
+ *   于是设置面板里这一项**根本不显示**；
+ * - `choices` 也**必须挂在字段实例上**：core 对 DataField 类型只做 `data.field = setting.type`，
+ *   不会把 `setting.choices` 传进字段（`applications/settings/config.mjs`）。
+ *
+ * 渲染结果是 `<multi-select>`：从下拉里选一项即添加（该项随即 disabled），
+ * 点已选标签上的 ✕ 移除——**不需要按 Ctrl/Cmd**。
+ * `SetField#clean()` 仍写数组、`initialize()` 返回 `Set`，两者都被 `getArraySetting()` 兼容。
+ *
+ * 拿不到 `foundry.data.fields` 时退回 `Array`（core 会包成 `StringField + choices` = 单选，
+ * 仅在退化环境下发生）。
  *
  * @returns {Function|object} 字段构造函数或字段实例
  */
 function getBlockingFieldType() {
   const fields = globalThis.foundry?.data?.fields;
-  if ( typeof fields?.ArrayField !== "function" || typeof fields?.StringField !== "function" ) return Array;
+  if ( typeof fields?.SetField !== "function" || typeof fields?.StringField !== "function" ) return Array;
   try {
-    return new fields.ArrayField(new fields.StringField({required: true, blank: false}), {
-      required: true,
-      nullable: false,
-      initial: []
-    });
+    return new fields.SetField(
+      new fields.StringField({required: true, blank: false, choices: {...WALL_HINT_BLOCKING_CHOICES}}),
+      {required: true, nullable: false, initial: []}
+    );
   } catch ( err ) {
     return Array;
   }
