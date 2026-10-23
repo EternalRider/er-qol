@@ -219,12 +219,12 @@ globalThis.Hooks = {
 
 const SETTINGS = new Map([
   ["er-qol.wallHint", false],
-  ["er-qol.wallHintColor", "#00e5ff"],
-  ["er-qol.wallHintWidth", 2],
   ["er-qol.wallHintOpacity", 1],
   ["er-qol.wallHintScope", "otherLayers"],
-  ["er-qol.wallHintBlocking", []]
+  ["er-qol.wallHintLines", []]
 ]);
+const MENUS = new Map();
+const SETTING_DEFS = new Map();
 const USER = {id: "u1", isGM: true, active: true};
 const OTHER_GM = {id: "u3", isGM: true, active: false};
 const PLAYER = {id: "u2", isGM: false, active: true};
@@ -250,6 +250,10 @@ globalThis.game = {
   settings: {
     register: (module, key, data) => {
       SETTINGS.set(`${module}.${key}`, data.default);
+      SETTING_DEFS.set(`${module}.${key}`, data);
+    },
+    registerMenu: (module, key, data) => {
+      MENUS.set(`${module}.${key}`, data);
     },
     get: (module, key) => SETTINGS.get(`${module}.${key}`),
     set: async (module, key, value) => SETTINGS.set(`${module}.${key}`, value)
@@ -653,38 +657,46 @@ assert("悬停相关设置已全部删除",
   !SETTINGS.has("er-qol.hoverHighlight") && !SETTINGS.has("er-qol.hoverInfo"));
 assert("区域传送的设置已全部删除（含 world 级冷却）",
   !SETTINGS.has("er-qol.teleportCooldown") && !SETTINGS.has("er-qol.regionTeleport"));
-for ( const key of ["wallHint", "wallHintColor", "wallHintWidth", "wallHintOpacity", "wallHintScope", "wallHintBlocking"] ) {
+for ( const key of ["wallHint", "wallHintOpacity", "wallHintScope", "wallHintLines"] ) {
   assert(`墙体提示线设置 ${key} 已注册`, SETTINGS.has(`er-qol.${key}`));
 }
 assert("墙体提示线默认关闭", SETTINGS.get("er-qol.wallHint") === false);
-assert("阻挡类型过滤默认为空数组（= 不过滤）",
-  deepEqual(SETTINGS.get("er-qol.wallHintBlocking"), []));
+assert("多条线默认为空数组（= 内置默认线：统一颜色 + 所有墙体都画）",
+  deepEqual(SETTINGS.get("er-qol.wallHintLines"), []));
+assert("多条线是 config:false（由自定义设置子菜单编辑）",
+  SETTING_DEFS.get("er-qol.wallHintLines")?.config === false);
+assert("旧的单线设置 wallHintColor / wallHintWidth / wallHintBlocking 已移除",
+  !SETTINGS.has("er-qol.wallHintColor") && !SETTINGS.has("er-qol.wallHintWidth")
+  && !SETTINGS.has("er-qol.wallHintBlocking"));
 assert("旧的 wallHintShowSecret 设置已删除", !SETTINGS.has("er-qol.wallHintShowSecret"));
+assert("墙体线样式设置菜单已注册", MENUS.has("er-qol.wallHintLinesMenu"));
+assert("设置菜单的 type 是 ApplicationV2 子类样式（构造函数）",
+  typeof MENUS.get("er-qol.wallHintLinesMenu")?.type === "function");
 
 /* -------------------------------------------------------------------------- */
 /*  8b. 墙体提示线（其他图层显示墙体线）                                          */
 /* -------------------------------------------------------------------------- */
 
-console.log("\n[8b] 墙体提示线");
+console.log("\n[8b] 墙体提示线（多条线配置）");
 
 const wallHint = await import(scripts("wall-hint.mjs"));
+const lineUtils = await import(scripts("wall-hint-lines.mjs"));
+
 assert("颜色解析：#00e5ff → 0x00e5ff",
   wallHint.parseHintColor("#00e5ff") === 0x00e5ff, String(wallHint.parseHintColor("#00e5ff")));
+assert("颜色解析：#0af → 0x00aaff", wallHint.parseHintColor("#0af") === 0x00aaff);
 assert("颜色解析：不支持的值回退默认色（不是密门类别色）",
   wallHint.parseHintColor("not-a-color") !== wallHint.SECRET_DOOR_CATEGORY_COLOR);
 assert("密门类别色常量与 Foundry 核心一致（0xA612D4）", wallHint.SECRET_DOOR_CATEGORY_COLOR === 0xA612D4);
-assert("样式归一化：线宽/不透明度取设置值",
-  deepEqual(wallHint.normalizeHintStyle({color: "#ff0000", width: 3, opacity: 0.5}).width, 3)
-  && wallHint.normalizeHintStyle({color: "#ff0000", width: 3, opacity: 0.5}).opacity === 0.5);
+assert("颜色文本规范化：#0AF → #00aaff", lineUtils.normalizeHintColorText("#0AF") === "#00aaff");
 
 // 真实 WallDocument 的 c 是**扁平数组** [x0, y0, x1, y1]（core schema 校验长度为 4）。
 const FLAT = [0, 0, 10, 0];
 const normalWallDoc = {c: [...FLAT], door: 0, move: 1, sight: 1, sound: 1, light: 1};
 const secretWallDoc = {c: [...FLAT], door: 2, move: 1, sight: 1, sound: 1, light: 1};
 const invisibleWallDoc = {c: [...FLAT], door: 0, move: 0, sight: 0, sound: 0, light: 0};
-const etherealWallDoc = {c: [...FLAT], door: 0, move: 1, sight: 1, sound: 1, light: 1};
-// 只挡移动、不挡视野 → 用于验证多选过滤
 const moveOnlyDoc = {c: [...FLAT], door: 0, move: 1, sight: 0, sound: 0, light: 0};
+const sightOnlyDoc = {c: [...FLAT], door: 0, move: 0, sight: 1, sound: 0, light: 0};
 
 assert("端点解析：真实扁平数组 [x0,y0,x1,y1]",
   deepEqual(wallHint.getWallSegment(normalWallDoc), {a: {x: 0, y: 0}, b: {x: 10, y: 0}}),
@@ -695,29 +707,70 @@ assert("端点解析：c[2]/c[3] 缺失时退到画布对象 b",
   deepEqual(wallHint.getWallSegment({c: [0, 0]}, {b: {x: 5, y: 6}}), {a: {x: 0, y: 0}, b: {x: 5, y: 6}}));
 assert("端点解析：非有限坐标返回 null", wallHint.getWallSegment({c: [0, 0, NaN, 5]}) === null);
 
-// 核心要求：所有类型墙体统一绘制，密门也一样（统一颜色下无法分辨）。
-assert("空过滤 = 任何墙体都画（普通墙）", wallHint.isWallHintEligible(normalWallDoc, []) === true);
-assert("空过滤 = 任何墙体都画（密门）", wallHint.isWallHintEligible(secretWallDoc, []) === true);
-assert("空过滤 = 任何墙体都画（隐形墙）", wallHint.isWallHintEligible(invisibleWallDoc, []) === true);
-assert("空过滤 = 任何墙体都画（虚体墙）", wallHint.isWallHintEligible(etherealWallDoc, []) === true);
-assert("密门不再被特殊排除（与普通墙同色绘制）",
-  wallHint.isWallHintEligible(secretWallDoc, []) === wallHint.isWallHintEligible(normalWallDoc, []));
+// 默认配置 = 唯一一条默认线：统一颜色 + 所有墙体（含密门）都画。
+const defaultLines = lineUtils.resolveWallHintLines([]);
+assert("空配置解析成 1 条默认线", defaultLines.length === 1, `实际 ${defaultLines.length}`);
+assert("默认线：实线 / #00e5ff / 宽 2 / 优先级 0 / 无条件",
+  (defaultLines[0].style === "solid") && (defaultLines[0].color === 0x00e5ff)
+  && (defaultLines[0].width === 2) && (defaultLines[0].priority === 0)
+  && (defaultLines[0].blocking.length === 0));
+assert("默认线命中所有墙体类别（含密门 / 隐形墙）",
+  [normalWallDoc, secretWallDoc, invisibleWallDoc]
+    .every(doc => lineUtils.selectWallLine(doc, defaultLines) === defaultLines[0]));
+assert("默认配置下密门与普通墙使用同一种颜色（不泄露密门）",
+  lineUtils.selectWallLine(secretWallDoc, defaultLines).color
+  === lineUtils.selectWallLine(normalWallDoc, defaultLines).color);
 
-// 按阻挡类型过滤（或关系）。
-assert("只勾「阻挡移动」：只挡移动的墙命中", wallHint.isWallHintEligible(moveOnlyDoc, ["move"]) === true);
-assert("只勾「阻挡移动」：不挡移动的墙不命中", wallHint.isWallHintEligible(invisibleWallDoc, ["move"]) === false);
-assert("只勾「阻挡视野」：只挡移动的墙不命中", wallHint.isWallHintEligible(moveOnlyDoc, ["sight"]) === false);
-assert("勾「阻挡移动 + 阻挡视野」= 或关系：只挡移动仍命中",
-  wallHint.isWallHintEligible(moveOnlyDoc, ["move", "sight"]) === true);
-assert("勾「阻挡视野 + 阻挡声音」：只挡移动不命中",
-  wallHint.isWallHintEligible(moveOnlyDoc, ["sight", "sound"]) === false);
-assert("阻挡类型过滤会剔除不认识的值",
+// 多条线：条件 + 优先级。
+const customLines = lineUtils.resolveWallHintLines([
+  {style: "dashed", color: "#ff0000", width: 3, priority: 10, blocking: ["sight"]},
+  {style: "dotted", color: "#00ff00", width: 1, priority: 5, blocking: ["move"]},
+  {style: "solid", color: "#0000ff", width: 2, priority: 0, blocking: []}
+]);
+assert("多条线被完整保留（3 条）", customLines.length === 3, `实际 ${customLines.length}`);
+assert("按优先级选线：只挡视野的墙 → 优先级 10 的虚线",
+  lineUtils.selectWallLine(sightOnlyDoc, customLines).style === "dashed");
+assert("按优先级选线：只挡移动的墙 → 优先级 5 的点线",
+  lineUtils.selectWallLine(moveOnlyDoc, customLines).style === "dotted");
+assert("按优先级选线：两条都命中的墙 → 优先级最高的那条",
+  lineUtils.selectWallLine(normalWallDoc, customLines).style === "dashed");
+assert("按优先级选线：只命中兜底线 → 实线",
+  lineUtils.selectWallLine(invisibleWallDoc, customLines).style === "solid");
+assert("条件为或关系：勾「移动 + 视野」能命中只挡移动的墙",
+  lineUtils.isWallHintEligible(moveOnlyDoc, ["move", "sight"]) === true);
+assert("条件为或关系：勾「视野 + 声音」不命中只挡移动的墙",
+  lineUtils.isWallHintEligible(moveOnlyDoc, ["sight", "sound"]) === false);
+assert("同优先级时取数组中靠前的线",
+  (() => {
+    const tie = lineUtils.resolveWallHintLines([
+      {style: "dashed", color: "#ff0000", width: 2, priority: 0, blocking: []},
+      {style: "dotted", color: "#00ff00", width: 2, priority: 0, blocking: []}
+    ]);
+    return lineUtils.selectWallLine(normalWallDoc, tie).style === "dashed";
+  })());
+assert("非法条目被丢弃；全是非法时回退默认线",
+  lineUtils.resolveWallHintLines([null, 5, "x"]).length === 1);
+assert("单条字段非法时安全回退（线型 solid / 默认色 / 宽度下限 1 / 优先级 0）",
+  (() => {
+    const [line] = lineUtils.resolveWallHintLines([{style: "bogus", color: "nope", width: 0, priority: "x"}]);
+    return (line.style === "solid") && (line.color === 0x00e5ff)
+      && (line.width === 1) && (line.priority === 0);
+  })());
+assert("阻挡类型条件会剔除不认识的值",
   deepEqual(wallHint.normalizeBlockingTypes(["move", "bogus", "move", "sight"]), ["move", "sight"]));
-assert("多选接受字符串（单个值的兼容写法）",
-  deepEqual(wallHint.normalizeBlockingTypes("sight"), ["sight"]));
-assert("wallBlocks：通道值不是 NONE 即算阻挡",
-  wallHint.wallBlocks({move: 1, sight: 0}, "move") === true
-  && wallHint.wallBlocks({move: 1, sight: 0}, "sight") === false);
+assert("阻挡类型条件接受对象（复选框提交形态）",
+  deepEqual(wallHint.normalizeBlockingTypes({move: true, sight: false, light: true}), ["move", "light"]));
+
+// 线型切段（纯几何）。
+assert("实线：整段一画", lineUtils.splitSegmentByDash({x: 0, y: 0}, {x: 100, y: 0}, "solid").length === 1);
+const dashedPieces = lineUtils.splitSegmentByDash({x: 0, y: 0}, {x: 100, y: 0}, "dashed");
+assert("虚线：切出多段", dashedPieces.length > 1, `实际 ${dashedPieces.length}`);
+assert("虚线：所有实线段首尾都在原线段上",
+  dashedPieces.every(piece => (piece.a.y === 0) && (piece.b.y === 0)
+    && (piece.a.x >= 0) && (piece.b.x <= 100)));
+assert("零长度线段不产生任何绘制段",
+  lineUtils.splitSegmentByDash({x: 5, y: 5}, {x: 5, y: 5}, "solid").length === 0);
+
 assert("otherLayers 范围在墙体图层激活时隐藏",
   wallHint.shouldHideHintOnWallsLayer("otherLayers", true) === true
   && wallHint.shouldHideHintOnWallsLayer("otherLayers", false) === false);
@@ -737,7 +790,11 @@ assert("导出了冻结接口",
   && typeof tokenBlocking.getTokenBlocking === "function"
   && typeof tokenBlocking.isEmptyTokenBlocking === "function"
   && typeof tokenBlocking.getTokenBlockingEdges === "function"
+  && typeof tokenBlocking.getTokenBlockingShape === "function"
+  && typeof tokenBlocking.buildAlphaContourFromAlphaData === "function"
   && typeof tokenBlocking.refreshTokenBlockingEdges === "function"
+  && typeof tokenBlocking.isOwnTokenBlockingEdge === "function"
+  && typeof tokenBlocking.installTokenBlockingPolygons === "function"
   && typeof tokenBlocking.installTokenBlocking === "function");
 assert("通道顺序 = move/sight/sound/light",
   deepEqual(tokenBlocking.TOKEN_BLOCKING_KEYS, ["move", "sight", "sound", "light"]));
@@ -774,19 +831,110 @@ assert("四条边（矩形）", blockingEdges.length === 4, `实际 ${blockingEd
 assert("边 id 前缀正确且唯一",
   blockingEdges.every(edge => String(edge.id).startsWith("er-qol.tokenBlocking."))
   && new Set(blockingEdges.map(edge => edge.id)).size === 4);
-assert("边 type=wall、direction=BOTH",
-  blockingEdges.every(edge => (edge.type === "wall") && (edge.direction === CONST.EDGE_DIRECTIONS.BOTH)));
-assert("四通道逐项映射（勾 move+sight，未勾 sound/light）",
+assert("边 type=wall、direction=BOTH、object 指向所属 TokenDocument",
+  blockingEdges.every(edge => (edge.type === "wall")
+    && (edge.direction === CONST.EDGE_DIRECTIONS.BOTH)
+    && (edge.object === blockingDoc)));
+assert("四通道逐项映射（勾 move+sight）：move=NORMAL、sight=LIMITED、sound/light=NONE",
   blockingEdges.every(edge => (edge.move === CONST.EDGE_SENSE_TYPES.NORMAL)
-    && (edge.sight === CONST.EDGE_SENSE_TYPES.NORMAL)
+    && (edge.sight === CONST.EDGE_SENSE_TYPES.LIMITED)
     && (edge.sound === CONST.EDGE_SENSE_TYPES.NONE)
     && (edge.light === CONST.EDGE_SENSE_TYPES.NONE)));
+
+// 自我豁免：backend 包装层只跳过"source 指向同一个 TokenDocument"的边。
+const selfSource = {object: {document: blockingDoc}};
+const otherSource = {object: {document: {id: "other-token"}}};
+assert("**Token 自己的 sweep（source.object.document === edge.object）会跳过自己的边**",
+  blockingEdges.every(edge => tokenBlocking.isOwnTokenBlockingEdge(edge, selfSource)));
+assert("**其他 Token 的 sweep 不会跳过这些边**",
+  blockingEdges.every(edge => !tokenBlocking.isOwnTokenBlockingEdge(edge, otherSource)));
+assert("非本模组登记的边永远不跳过",
+  tokenBlocking.isOwnTokenBlockingEdge({id: "core.wall.1", object: blockingDoc}, selfSource) === false);
+assert("没有 source（手工 polygon 等）时不跳过",
+  blockingEdges.every(edge => !tokenBlocking.isOwnTokenBlockingEdge(edge, null)));
 assert("高度取自 doc.elevation", blockingEdges.every(edge => edge.a.elevation === 5));
 assert("options.elevation 覆盖 doc.elevation",
   tokenBlocking.getTokenBlockingEdges(blockingDoc, {EdgeClass: EdgeStub, width: 100, height: 100, elevation: 0})
     .every(edge => edge.a.elevation === 0));
 assert("缺 EdgeClass → 空数组且不抛错",
   deepEqual(tokenBlocking.getTokenBlockingEdges(blockingDoc, {width: 100, height: 100}), []));
+
+// ---- 阻挡形状：矩形 / 椭圆 / 图片边缘（2026-10-23 追加） ----
+assert("形状清单 = rect / ellipse / alpha",
+  deepEqual(tokenBlocking.TOKEN_BLOCKING_SHAPES, ["rect", "ellipse", "alpha"]));
+assert("默认形状 = rect", tokenBlocking.getTokenBlockingShape(blockingDoc) === "rect");
+assert("形状读取来自 flags['er-qol'].blocking.shape",
+  tokenBlocking.getTokenBlockingShape({flags: {"er-qol": {blocking: {move: true, shape: "ellipse"}}}}) === "ellipse");
+assert("非法形状回退 rect",
+  tokenBlocking.getTokenBlockingShape({flags: {"er-qol": {blocking: {shape: "hexagon"}}}}) === "rect");
+assert("getTokenBlocking() 仍只返回 4 个布尔键（形状是独立字段，不污染通道语义）",
+  deepEqual(Object.keys(tokenBlocking.getTokenBlocking({flags: {"er-qol": {blocking: {move: true, shape: "ellipse"}}}})),
+    ["move", "sight", "sound", "light"]));
+
+const ellipseDoc = {id: "ell", x: 0, y: 0, width: 1, height: 1,
+  flags: {"er-qol": {blocking: {move: true, shape: "ellipse"}}}};
+const ellipseEdges = tokenBlocking.getTokenBlockingEdges(ellipseDoc, {EdgeClass: EdgeStub, width: 100, height: 100});
+assert("椭圆形状生成 48 条边（闭合多边形）", ellipseEdges.length === 48, `实际 ${ellipseEdges.length}`);
+assert("椭圆点都落在占位矩形内、且满足椭圆方程（不是四角）",
+  ellipseEdges.every(edge => (edge.a.x >= 0) && (edge.a.x <= 100) && (edge.a.y >= 0) && (edge.a.y <= 100))
+  && ellipseEdges.every(edge => {
+    const nx = (edge.a.x - 50) / 50;
+    const ny = (edge.a.y - 50) / 50;
+    return Math.abs((nx * nx) + (ny * ny) - 1) < 1e-9;
+  }));
+assert("椭圆边 id 连续且唯一", new Set(ellipseEdges.map(edge => edge.id)).size === 48);
+
+const alphaDoc = {id: "alpha", x: 0, y: 0, width: 1, height: 1,
+  texture: {src: "token.webp", anchorX: 0.5, anchorY: 0.5, scaleX: 1, scaleY: 1, fit: "contain"},
+  flags: {"er-qol": {blocking: {move: true, shape: "alpha"}}}};
+assert("alpha 形状没有轮廓时回退成矩形（4 条边）",
+  tokenBlocking.getTokenBlockingEdges(alphaDoc, {EdgeClass: EdgeStub, width: 100, height: 100}).length === 4);
+const fakeContour = {
+  width: 10, height: 10,
+  points: [{x: 0, y: 0}, {x: 1, y: 0}, {x: 1, y: 1}, {x: 0, y: 1}]
+};
+const alphaEdges = tokenBlocking.getTokenBlockingEdges(alphaDoc, {EdgeClass: EdgeStub, width: 100, height: 100, contour: fakeContour});
+assert("alpha 形状使用传入轮廓（4 个点 → 4 条边，映射到占位矩形）",
+  alphaEdges.length === 4
+  && alphaEdges.map(edge => [edge.a.x, edge.a.y]).join(";") === "0,0;100,0;100,100;0,100");
+
+// 图片显示矩形：方形图 → 正好等于占位矩形；2:1 图按 contain 居中留白。
+const footprint = {left: 0, top: 0, right: 100, bottom: 100};
+assert("getTokenTextureRectangle：方形图 + contain → 与占位矩形一致",
+  deepEqual(tokenBlocking.getTokenTextureRectangle(
+    {texture: {fit: "contain", anchorX: 0.5, anchorY: 0.5, scaleX: 1, scaleY: 1}},
+    footprint, 100, 100), {left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100}));
+assert("getTokenTextureRectangle：2:1 图 + contain → 100×50 居中",
+  deepEqual(tokenBlocking.getTokenTextureRectangle(
+    {texture: {fit: "contain", anchorX: 0.5, anchorY: 0.5, scaleX: 1, scaleY: 1}},
+    footprint, 200, 100), {left: 0, top: 25, right: 100, bottom: 75, width: 100, height: 50}));
+
+// 纯 alpha 数据 → 轮廓（不依赖 canvas）
+const makeAlpha = (w, h, predicate) => {
+  const data = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const offset = ((y * w) + x) * 4;
+    data[offset] = 255; data[offset + 1] = 255; data[offset + 2] = 255;
+    data[offset + 3] = predicate(x, y) ? 255 : 0;
+  }
+  return data;
+};
+const opaqueSquare = tokenBlocking.buildAlphaContourFromAlphaData(makeAlpha(16, 16, () => true), 16, 16, {segments: 16});
+assert("alpha 轮廓：整张不透明图片 → 16 个点、半径接近边界",
+  opaqueSquare?.points?.length === 16
+  && opaqueSquare.points.every(point => (point.x > 0.75) || (point.x < 0.25)
+    || (point.y > 0.75) || (point.y < 0.25)));
+const opaqueCircle = tokenBlocking.buildAlphaContourFromAlphaData(
+  makeAlpha(32, 32, (x, y) => Math.hypot(x - 15.5, y - 15.5) <= 12), 32, 32, {segments: 32});
+assert("alpha 轮廓：圆形图 → 点到重心距离近似相等（星形轮廓）",
+  opaqueCircle?.points?.length === 32
+  && (() => {
+    const radii = opaqueCircle.points.map(point => Math.hypot(point.x - 0.5, point.y - 0.5));
+    const avg = radii.reduce((a, b) => a + b, 0) / radii.length;
+    return radii.every(radius => Math.abs(radius - avg) < 0.06);
+  })());
+assert("alpha 轮廓：全透明 → null（调用方回退矩形）",
+  tokenBlocking.buildAlphaContourFromAlphaData(makeAlpha(8, 8, () => false), 8, 8) === null);
 
 /* -------------------------------------------------------------------------- */
 /*  9. 光照 / 墙体模块（可选）                                                   */

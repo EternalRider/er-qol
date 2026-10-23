@@ -49,14 +49,19 @@ Post a **UI notification or chat message** when a token enters or leaves the Reg
 Client-side setting that draws a thin line for **every wall even when the Walls layer is not
 active**, so everyone can see where the real wall lines are while moving tokens around.
 
-- one **uniform configurable color** (with a color picker) — deliberately *not* the Walls-layer
-  colors. Every wall is drawn the same way, **secret doors included**: because the lines are
-  indistinguishable, nothing stands out, whereas skipping a wall would mark its position by absence;
-- configurable width and opacity;
-- scope: only on other layers (hidden while the Walls layer is active) or always;
-- **filter by what the wall blocks** (multi-select): block movement / sight / sound / light. Leave all
-  options unchecked — the default — to draw every wall. Checked options are combined with **OR**, so
-  checking *movement + sight* draws walls that block movement, sight, or both.
+- **default: one uniform configurable color** — deliberately *not* the Walls-layer colors. Every
+  wall is drawn the same way, **secret doors included**: because the lines are indistinguishable,
+  nothing stands out, whereas skipping a wall would mark its position by absence;
+- **multiple outline styles (new)**: open *Configure Wall Outline Styles* in the module settings to
+  define several lines. Each line configures its **line style** (solid / dashed / dotted / dash-dot /
+  dash-dot-dot), **color**, **width**, **condition** (which senses the wall blocks) and **priority**.
+  When one wall matches several lines, the **highest-priority** one is drawn; equal priorities use
+  the row order. Conditions are matched only against what the wall *blocks* — **never against the
+  wall type**, so a secret door that blocks sight is treated exactly like any other sight-blocking
+  wall;
+- `[]` (no styles configured) is the built-in default line: one uniform color for every wall;
+- configurable global opacity;
+- scope: only on other layers (hidden while the Walls layer is active) or always.
 
 ### 5. Token Blocking *(new)*
 
@@ -66,6 +71,17 @@ right after **Light** — and the values are stored on the **prototype token**, 
 afterwards inherit them.
 
 - four independent channels: Blocks Movement / Sight / Sound / Light;
+- **blocking shape** (new): **Rectangle** (the default, matching the token's grid space),
+  **Ellipse / Circle** (an oval inside the space), or **Image Edge (experimental)** — the outline is
+  generated from the token image's opaque pixels (transparent parts are ignored; the contour is
+  cached per image and falls back to a rectangle if the image can't be read). The image-edge option
+  is a star-shaped approximation, so very concave or hollow artwork is only approximated;
+- **the token never blocks itself**. The outline behaves like a *one-way* wall:
+  - its own movement, vision, light and sound are **not** blocked by its own space;
+  - other tokens cannot enter its space (movement), and they **can see the token itself but cannot
+    see through it** (sight), because the sensing channels use `LIMITED` edges — the observer's ray
+    passes the near edge and stops at the far edge;
+  - other tokens' light/sound likewise reaches the token but does not project past it;
 - the blocking outline is the token's own footprint (its grid square(s)), so a door-sized token can
   act as a door, a pillar token can block line of sight, etc.;
 - it participates in the same edge/sweep pipeline as walls, so sight, light, sound and movement
@@ -82,7 +98,7 @@ afterwards inherit them.
 
 ## Compatibility
 
-- Foundry **V14** (`minimum: 14`, `verified: 14.368`). The two merged modules targeted V14 as well.
+- Foundry **V14** (`minimum: 14`, `verified: 14.369`). The two merged modules targeted V14 as well.
 - **er-qol namespaced behavior types only.** All three Region behaviors use `er-qol.*` type keys
   (`er-qol.regionLighting`, `er-qol.regionWall`, `er-qol.regionAnnounce`).
   The pre-release `region-lighting` / `region-walls` type keys are **not** carried over, so Region
@@ -99,7 +115,7 @@ afterwards inherit them.
 Manifest URL:
 
 ```
-https://github.com/EternalRider/er-qol/releases/latest/download/module.json
+https://github.com/fvtt-cn/er-qol/releases/latest/download/module.json
 ```
 
 Or drop the folder into `FoundryVTT/Data/modules/er-qol` and enable it.

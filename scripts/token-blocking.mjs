@@ -8,8 +8,8 @@
  * `ClockwiseSweepPolygon#_identifyEdges()`（core `client/canvas/geometry/clockwise-sweep.mjs:228-242`，
  * 第 234 行 `this.level.edges.getEdges(...)`）会把那里的边克隆进来，再按
  * `edge[type] !== CONST.EDGE_SENSE_TYPES.NONE`（同文件 :266）逐通道过滤。
- * 所以"把 Token 的四条边界写进 `canvas.edges`"就等价于"这四条边是一面墙"，
- * 移动/视野/声音/光照四种 sweep 全都会看到它们，不需要包装任何 core 类。
+ * 所以"把 Token 的四条边界写进 `canvas.edges`"就能让移动/视野/声音/光照四种 sweep
+ * 都看到它们，不需要包装任何 core 类（方向与档位语义见下面"不挡自己"一节）。
  *
  * **与真正的墙的差别（别把它说成完全等价）**：
  * - 只做 **4 个通道**（move/sight/sound/light）。core 的墙体边还有 `darkness` 与
@@ -17,6 +17,43 @@
  * - `Edge` 是 2D 的：`Point2` 只保留 `x/y`，构造时传的 `elevation` 会被 core 丢弃
  *   （`client/canvas/geometry/edges/edge.mjs:23-25`）。因此**同一 Level 内不同高度的
  *   Token 会互相遮挡** —— 这是"把 Token 当成墙"的固有语义，不是 bug。
+ *
+ * ## 不挡自己（2026-10-23 修正）
+ *
+ * 最初四条边都写成 `direction: BOTH`、四通道全 `NORMAL`，结果 Token 把自己关在盒子里：
+ * 自己的移动路径出不去、自己的视线/光照也出不去，其他 Token 也看不见它。
+ * 现在的实现分两层：
+ *
+ * 1. **遮挡语义（所有 Token 通用）**：
+ *    - `move` 用 `NORMAL`：其他 Token 从外面靠近时在近边被挡住，进不去；
+ *    - `sight` / `sound` / `light` 用 `LIMITED`（`EDGE_SENSE_TYPES.LIMITED`，值 10）。
+ *      core 的语义是"忽略第一处相交、在第二处相交停下"。从外面看进来的射线先穿过近边
+ *      （第一处，忽略）、再撞到远边（第二处，停下）——于是**能看见 Token 本身，看不见它后方**；
+ *      碰撞检测（`clockwise-sweep.mjs:759-787`）也不会把单次相交当成立即撞上。
+ * 2. **只对"这条边所属 Token 自己的 sweep"豁免**：四条边不带 `object` 以外的额外身份，
+ *    我们包装 `CONFIG.Canvas.polygonBackends[type]`（core 允许模块替换这些类，`region-walls.mjs`
+ *    也是这么做的），在 `_testEdgeInclusion` 里判断：
+ *    "这条边是我们登记的 Token 边，且本次 polygon 的 `config.source.object.document`
+ *    正是这条边的 `object`" → 跳过。
+ *    这样 Token 自己的视野/光照/移动 sweep 完全不看自己的四条边，而别的 Token 的 sweep
+ *    正常看到它们。**不要把这条豁免做成 `direction` 单向边**：对凸矩形，单向方向会把
+ *    "远端边"也一并排除，导致外面能看穿 Token（已实测过）。
+ *
+ * 注意：`direction` 仍是 `BOTH`，因为每条边对"哪个方向来的观察者"都要一致地参与计算。
+ *
+ * ## 阻挡形状（2026-10-23 追加）
+ *
+ * `flags["er-qol"].blocking.shape` 决定阻挡轮廓的形状：
+ * - `rect`（默认）：Token 的占位矩形；
+ * - `ellipse`：占位矩形内的椭圆（非方形 Token 即椭圆，1×1 即近似圆）；
+ * - `alpha`（实验性）：按 Token 图片的**不透明像素轮廓**生成多边形，忽略透明部分。
+ *   做法：把图片按原比例缩到 ~96px、读 alpha 通道，从"不透明像素重心"向四周做径向扫描，
+ *   每根射线取最远的实心点，得到 64 个点的星形近似轮廓（凹形/镂空只能近似）。
+ *   图片跨域被 canvas 防护（`getImageData` 抛错）或加载失败时，**回退成矩形**并 `console.warn`
+ *   一次。轮廓按图片 `src` 全局缓存；加载完成后自动重建边界。
+ *
+ * 三种形状共用同一套通道语义（move=NORMAL / sight/sound/light=LIMITED）与自我豁免逻辑，
+ * 区别只在于生成的边。`getTokenBlockingShape()` 永远返回三种合法值之一，非法值按 `rect`。
  *
  * `canvas.edges` 是 `CanvasEdges extends Map`（core `client/canvas/geometry/edges/edges.mjs:9,81-95`），
  * 内部带四叉树与"交点脏标记"（:152 查询时自动 `identifyIntersections()`），
@@ -103,6 +140,24 @@ export const DEFAULT_TOKEN_BLOCKING = Object.freeze({
   light: false
 });
 
+/** 可选的阻挡轮廓形状；顺序即配置界面下拉框顺序。 */
+export const TOKEN_BLOCKING_SHAPES = Object.freeze(["rect", "ellipse", "alpha"]);
+
+/** 默认形状：Token 的占位矩形（与旧版行为一致）。 */
+export const DEFAULT_TOKEN_BLOCKING_SHAPE = "rect";
+
+/** 椭圆用多少条边近似（越大越平滑，边越多碰撞计算越慢）。 */
+const ELLIPSE_SEGMENTS = 48;
+
+/** 图片轮廓的径向采样数（生成的多边形点数）。 */
+const ALPHA_CONTOUR_SEGMENTS = 64;
+
+/** 读取图片 alpha 时缩放到的最大边长（像素）。 */
+const ALPHA_SAMPLE_MAX_SIZE = 96;
+
+/** 判定"不透明"的 alpha 阈值（0–255）。 */
+const ALPHA_SOLID_THRESHOLD = 128;
+
 /** 本模块登记在 `canvas.edges` 里的边 id 前缀（清理时按它扫描）。 */
 const EDGE_ID_PREFIX = `${MODULE_ID}.tokenBlocking.`;
 
@@ -117,9 +172,6 @@ const TAB_ICON = "fa-solid fa-vector-square";
 
 /** 本地化键前缀（键名由 Lead 在 `lang/*.json` 提供）。 */
 const LOC = "ERQOL.TOKEN_BLOCKING";
-
-/** `getTokenBlockingEdges` 生成的 4 条边的语义顺序（索引即 id 后缀）。 */
-const EDGE_ORDER = Object.freeze(["top", "right", "bottom", "left"]);
 
 /** 需要联动刷新的画布/文档钩子（core 中均真实存在）。 */
 const REFRESH_HOOKS = Object.freeze([
@@ -189,18 +241,173 @@ export function isEmptyTokenBlocking(blocking) {
   return TOKEN_BLOCKING_KEYS.every(key => blocking[key] !== true);
 }
 
+/**
+ * 读取阻挡轮廓的形状。
+ *
+ * - `rect`（默认）：占位矩形；
+ * - `ellipse`：占位矩形内的椭圆；
+ * - `alpha`：按 Token 图片不透明像素的轮廓（实验性）。
+ *
+ * 任何缺失/非法值都回退到 `rect`，保证旧数据与手改数据不会让边界生成崩掉。
+ *
+ * @param {TokenDocument|PrototypeToken|Actor|null|undefined} doc 文档或 Actor
+ * @returns {"rect"|"ellipse"|"alpha"} 合法形状
+ */
+export function getTokenBlockingShape(doc) {
+  const raw = getModuleFlags(doc)?.[TOKEN_BLOCKING_FLAG]?.shape;
+  return TOKEN_BLOCKING_SHAPES.includes(raw) ? raw : DEFAULT_TOKEN_BLOCKING_SHAPE;
+}
+
 /* -------------------------------------------------------------------------- */
 /*  纯函数：几何（可独立自测）                                                     */
 /* -------------------------------------------------------------------------- */
 
 /**
- * 生成某个文档的边界线段数组（矩形四条边），交给调用方注入 `Edge` 类。
+ * 生成一个矩形的四个角点（左上 → 右上 → 右下 → 左下）。
+ *
+ * @param {{left: number, top: number, right: number, bottom: number}} rect 矩形
+ * @returns {Array<{x: number, y: number}>} 四个角点
+ */
+export function getRectanglePoints(rect) {
+  return [
+    {x: rect.left, y: rect.top},
+    {x: rect.right, y: rect.top},
+    {x: rect.right, y: rect.bottom},
+    {x: rect.left, y: rect.bottom}
+  ];
+}
+
+/**
+ * 生成矩形内切椭圆的点集（闭合多边形；屏幕坐标、顺时针）。
+ *
+ * @param {{left: number, top: number, right: number, bottom: number}} rect 外接矩形
+ * @param {number} [segments=48] 边数（至少 3）
+ * @returns {Array<{x: number, y: number}>} 椭圆点集
+ */
+export function getEllipsePoints(rect, segments = ELLIPSE_SEGMENTS) {
+  const count = Math.max(3, Math.trunc(Number(segments) || ELLIPSE_SEGMENTS));
+  const cx = (rect.left + rect.right) / 2;
+  const cy = (rect.top + rect.bottom) / 2;
+  const rx = (rect.right - rect.left) / 2;
+  const ry = (rect.bottom - rect.top) / 2;
+
+  const points = [];
+  for ( let index = 0; index < count; index += 1 ) {
+    const angle = (-Math.PI / 2) + ((index / count) * Math.PI * 2);
+    points.push({x: cx + (Math.cos(angle) * rx), y: cy + (Math.sin(angle) * ry)});
+  }
+  return points;
+}
+
+/**
+ * 取 Token 的纹理配置（Actor 输入取 prototypeToken.texture）。
+ *
+ * @param {TokenDocument|PrototypeToken|Actor|null|undefined} doc 文档或 Actor
+ * @returns {object|null} 纹理配置
+ */
+function getTextureConfig(doc) {
+  if ( !doc || (typeof doc !== "object") ) return null;
+  return asObject(doc.texture) ?? asObject(doc.prototypeToken?.texture);
+}
+
+/**
+ * 取 Token 纹理的图片路径（alpha 轮廓缓存键）。
+ *
+ * @param {TokenDocument|PrototypeToken|Actor|null|undefined} doc 文档或 Actor
+ * @returns {string|null} 图片路径
+ */
+export function getTokenTextureSource(doc) {
+  const src = getTextureConfig(doc)?.src;
+  return (typeof src === "string" && src) ? src : null;
+}
+
+/**
+ * 计算图片在画布上的实际显示矩形（复刻 core `PrimarySpriteMesh#resize` + mesh anchor）。
+ *
+ * Token 的图片以 `anchorX/anchorY` 挂在 Token 中心，按 `fit` 与 `scaleX/scaleY` 缩放。
+ * 只有 `alpha` 形状需要它：把归一化的图片轮廓映射到画布坐标。
+ *
+ * @param {TokenDocument|PrototypeToken|Actor|null|undefined} doc 文档或 Actor
+ * @param {{left: number, top: number, right: number, bottom: number}} footprint Token 占位矩形
+ * @param {number} imageWidth 图片原始宽度（像素）
+ * @param {number} imageHeight 图片原始高度（像素）
+ * @returns {{left: number, top: number, right: number, bottom: number, width: number, height: number}} 显示矩形
+ */
+export function getTokenTextureRectangle(doc, footprint, imageWidth, imageHeight) {
+  const texture = getTextureConfig(doc) ?? {};
+  const baseWidth = footprint.right - footprint.left;
+  const baseHeight = footprint.bottom - footprint.top;
+  const texWidth = toFiniteNumber(imageWidth);
+  const texHeight = toFiniteNumber(imageHeight);
+  if ( !texWidth || !texHeight || (texWidth <= 0) || (texHeight <= 0) || (baseWidth <= 0) || (baseHeight <= 0) ) {
+    return {left: footprint.left, top: footprint.top, right: footprint.right, bottom: footprint.bottom,
+      width: baseWidth, height: baseHeight};
+  }
+
+  const fit = ["fill", "cover", "contain", "width", "height"].includes(texture.fit) ? texture.fit : "contain";
+  let sx;
+  let sy;
+  switch ( fit ) {
+    case "fill":
+      sx = baseWidth / texWidth;
+      sy = baseHeight / texHeight;
+      break;
+    case "cover":
+      sx = sy = Math.max(baseWidth / texWidth, baseHeight / texHeight);
+      break;
+    case "width":
+      sx = sy = baseWidth / texWidth;
+      break;
+    case "height":
+      sx = sy = baseHeight / texHeight;
+      break;
+    default: // contain
+      sx = sy = Math.min(baseWidth / texWidth, baseHeight / texHeight);
+      break;
+  }
+  sx *= toFiniteNumber(texture.scaleX) || 1;
+  sy *= toFiniteNumber(texture.scaleY) || 1;
+
+  const width = Math.abs(sx * texWidth);
+  const height = Math.abs(sy * texHeight);
+  const anchorX = toFiniteNumber(texture.anchorX) ?? 0.5;
+  const anchorY = toFiniteNumber(texture.anchorY) ?? 0.5;
+  const centerX = (footprint.left + footprint.right) / 2;
+  const centerY = (footprint.top + footprint.bottom) / 2;
+  const left = centerX - (anchorX * width);
+  const top = centerY - (anchorY * height);
+  return {left, top, right: left + width, bottom: top + height, width, height};
+}
+
+/**
+ * 把 `alpha` 形状的归一化轮廓映射到画布坐标。
+ *
+ * @param {TokenDocument|PrototypeToken|Actor|null|undefined} doc 文档或 Actor
+ * @param {{left: number, top: number, right: number, bottom: number}} footprint Token 占位矩形
+ * @param {{points: Array<{x: number, y: number}>, width: number, height: number}} contour 归一化轮廓
+ * @returns {Array<{x: number, y: number}>} 画布坐标点集
+ */
+export function mapAlphaContour(doc, footprint, contour) {
+  const points = Array.isArray(contour?.points) ? contour.points : [];
+  if ( points.length < 3 ) return [];
+  const display = getTokenTextureRectangle(doc, footprint, contour.width, contour.height);
+  return points.map(point => ({
+    x: display.left + (Number(point.x) * display.width),
+    y: display.top + (Number(point.y) * display.height)
+  })).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y));
+}
+
+/**
+ * 生成某个文档的阻挡边界（按 `shape` 选矩形 / 椭圆 / 图片轮廓）。
  *
  * 本函数**不注册、不改任何状态**，纯粹按配置算几何，便于在 Node 里自测。
  *
  * 坐标约定：`doc.x` / `doc.y` 是**左上角**（像素），尺寸也按像素；
- * 因此矩形是 `[x, y] - [x + width, y + height]`，四条边按
- * 上 → 右 → 下 → 左 排列，id 后缀 0..3。
+ *
+ * 每条边写入的通道值：
+ * - `move`：勾选时 `NORMAL`（外面的人挡在近边）；
+ * - `sight` / `sound` / `light`：勾选时 `LIMITED`（外面看得见 Token、看不穿它）；
+ * - 未勾选：`NONE`。
  *
  * @param {TokenDocument|PrototypeToken|Actor|null|undefined} doc 文档或 Actor
  * @param {object} [options] 选项
@@ -209,10 +416,11 @@ export function isEmptyTokenBlocking(blocking) {
  * @param {number} [options.height] 像素高度（同上）；缺省时取 `doc.object.h` → `doc.getSize().height` → 网格尺寸 × `doc.height`
  * @param {number} [options.padding=0] 四周外扩的像素数（可为负，结果非正时返回空数组）
  * @param {number} [options.elevation] 覆盖边端点高度；缺省取 `doc.elevation`
+ * @param {object} [options.contour] `alpha` 形状的归一化轮廓（由 {@link buildAlphaContourFromAlphaData} 生成）；缺失时该形状回退成矩形
  * @returns {Array<object>} `Edge` 实例数组；配置为空 / 缺 EdgeClass / 几何非法 → `[]`
  */
 export function getTokenBlockingEdges(doc, options = {}) {
-  const {EdgeClass, width, height, padding = 0, elevation} = options;
+  const {EdgeClass, width, height, padding = 0, elevation, contour} = options;
   if ( !doc || (typeof EdgeClass !== "function") ) return [];
 
   const blocking = getTokenBlocking(doc);
@@ -221,34 +429,238 @@ export function getTokenBlockingEdges(doc, options = {}) {
   const rect = getBlockingRectangle(doc, {width, height, padding});
   if ( !rect ) return [];
 
-  // 三个高度一起取，保持 3D 语义（不写死 0；core 的 Edge 是 2D 的，高度信息留在端点上）。
+  // 按形状取点集；任何异常（轮廓缺失/点数不足）都回退成矩形，保证边界永远可用。
+  const shape = getTokenBlockingShape(doc);
+  let points = null;
+  if ( shape === "ellipse" ) points = getEllipsePoints(rect);
+  else if ( shape === "alpha" ) points = mapAlphaContour(doc, rect, contour);
+  if ( !Array.isArray(points) || (points.length < 3) ) points = getRectanglePoints(rect);
+
+  // 高度一起取，保持 3D 语义（不写死 0；core 的 Edge 是 2D 的，高度信息留在端点上）。
   const z = resolveElevation(doc, elevation);
-  const corners = [
-    {x: rect.left, y: rect.top, elevation: z},
-    {x: rect.right, y: rect.top, elevation: z},
-    {x: rect.right, y: rect.bottom, elevation: z},
-    {x: rect.left, y: rect.bottom, elevation: z}
-  ];
+  points = points.map(point => ({x: point.x, y: point.y, elevation: z}));
 
   const sense = getSenseTypes();
   const direction = getDirectionBoth();
   const baseId = `${EDGE_ID_PREFIX}${doc.id ?? doc.uuid ?? "unknown"}`;
 
   const edges = [];
-  for ( let index = 0; index < EDGE_ORDER.length; index += 1 ) {
-    const a = corners[index];
-    const b = corners[(index + 1) % corners.length];
+  for ( let index = 0; index < points.length; index += 1 ) {
+    const a = points[index];
+    const b = points[(index + 1) % points.length];
     edges.push(new EdgeClass(a, b, {
       id: `${baseId}.${index}`,
+      // 记下归属文档：包装后的 polygon backend 用 `edge.object === source.object.document`
+      // 判断"这是不是本次 sweep 自己的边"，从而只对 Token 自己豁免。
+      object: doc,
       type: EDGE_TYPE_WALL,
       direction,
+      // 移动：普通边（外面的人进不来；自己的 sweep 由 backend 包装层跳过这些边）。
       move: blocking.move ? sense.normal : sense.none,
-      sight: blocking.sight ? sense.normal : sense.none,
-      sound: blocking.sound ? sense.normal : sense.none,
-      light: blocking.light ? sense.normal : sense.none
+      // 视野/光照/声音：LIMITED —— 外面看得见 Token、看不穿它。
+      sight: blocking.sight ? sense.limited : sense.none,
+      sound: blocking.sound ? sense.limited : sense.none,
+      light: blocking.light ? sense.limited : sense.none
     }));
   }
   return edges;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  图片 alpha 轮廓（实验性 "alpha" 形状）                                        */
+/* -------------------------------------------------------------------------- */
+
+/** 图片轮廓缓存：`src` → `{status, contour, promise}`。 */
+const alphaContours = new Map();
+
+/** 是否已经提示过图片轮廓失败（避免每次刷新刷屏）。 */
+let warnedAlphaContour = false;
+
+/** 是否已经提示过"alpha 形状回退成矩形"（每个 Token 只提示一次）。 */
+const warnedAlphaFallback = new Set();
+
+/**
+ * 清空图片轮廓缓存（换场景 / 素材更新时手动调用；正常流程不需要）。
+ *
+ * @returns {void}
+ */
+export function clearAlphaContourCache() {
+  alphaContours.clear();
+  warnedAlphaFallback.clear();
+}
+
+/**
+ * 从 RGBA 像素数据生成"不透明像素轮廓"。
+ *
+ * 算法（实验性、追求简单稳健）：
+ * 1. 找出所有 alpha ≥ 阈值的像素，求它们的**重心**；
+ * 2. 从重心向四周均匀发射 `segments` 条射线，每条射线取最远的实心采样点；
+ * 3. 得到星形近似多边形，坐标归一化到 `[0, 1]`。
+ *
+ * 这对"角色居中、外轮廓大致星形"的 Token 图效果最好；凹形/镂空只能近似。
+ * 完全透明（找不到任何实心像素）时返回 `null`，调用方回退成矩形。
+ *
+ * @param {Uint8ClampedArray|Uint8Array} data RGBA 像素数据（长度 = width × height × 4）
+ * @param {number} width 像素宽度
+ * @param {number} height 像素高度
+ * @param {object} [options] 选项
+ * @param {number} [options.threshold=128] alpha 阈值（0–255）
+ * @param {number} [options.segments=64] 采样射线数
+ * @returns {{points: Array<{x: number, y: number}>, width: number, height: number}|null} 归一化轮廓
+ */
+export function buildAlphaContourFromAlphaData(data, width, height, {threshold = ALPHA_SOLID_THRESHOLD,
+  segments = ALPHA_CONTOUR_SEGMENTS} = {}) {
+  const w = Math.trunc(Number(width));
+  const h = Math.trunc(Number(height));
+  const count = Math.max(8, Math.trunc(Number(segments) || ALPHA_CONTOUR_SEGMENTS));
+  if ( !data || (typeof data.length !== "number") || (w < 2) || (h < 2) || (data.length < w * h * 4) ) return null;
+
+  // 1) 不透明像素的重心
+  let sumX = 0;
+  let sumY = 0;
+  let solidCount = 0;
+  const solid = new Uint8Array(w * h);
+  for ( let y = 0; y < h; y += 1 ) {
+    for ( let x = 0; x < w; x += 1 ) {
+      const alpha = data[((y * w) + x) * 4 + 3];
+      if ( alpha >= threshold ) {
+        solid[(y * w) + x] = 1;
+        sumX += x;
+        sumY += y;
+        solidCount += 1;
+      }
+    }
+  }
+  if ( !solidCount ) return null;
+
+  const cx = sumX / solidCount;
+  const cy = sumY / solidCount;
+  const maxRadius = Math.hypot(Math.max(cx, w - cx), Math.max(cy, h - cy));
+
+  // 2) 径向扫描：每根射线取最远的实心点
+  const points = [];
+  for ( let index = 0; index < count; index += 1 ) {
+    const angle = (index / count) * Math.PI * 2;
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle);
+    let farthest = -1;
+    for ( let radius = 0; radius <= maxRadius; radius += 0.5 ) {
+      const x = Math.round(cx + (dx * radius));
+      const y = Math.round(cy + (dy * radius));
+      if ( (x < 0) || (y < 0) || (x >= w) || (y >= h) ) break;
+      if ( solid[(y * w) + x] ) farthest = radius;
+    }
+    // 完全透明的方向给一个很小的半径，避免多边形退化成一个点。
+    if ( farthest < 0 ) farthest = 0.05 * maxRadius;
+    points.push({
+      x: (cx + (dx * farthest)) / w,
+      y: (cy + (dy * farthest)) / h
+    });
+  }
+
+  return {points, width: w, height: h};
+}
+
+/**
+ * 把图片画到缩略 canvas 上并读取 alpha，生成归一化轮廓。
+ *
+ * 图片会先按**原始比例**缩到最长边 `ALPHA_SAMPLE_MAX_SIZE`，这样归一化坐标映射回
+ * `getTokenTextureRectangle()` 的显示矩形时不会变形。
+ *
+ * @param {CanvasImageSource|HTMLImageElement|ImageBitmap} image 图片源
+ * @returns {{points: Array<{x: number, y: number}>, width: number, height: number}|null} 归一化轮廓
+ */
+export function buildAlphaContourFromImage(image) {
+  const naturalWidth = Number(image?.naturalWidth ?? image?.videoWidth ?? image?.width);
+  const naturalHeight = Number(image?.naturalHeight ?? image?.videoHeight ?? image?.height);
+  if ( !Number.isFinite(naturalWidth) || !Number.isFinite(naturalHeight)
+    || (naturalWidth <= 0) || (naturalHeight <= 0) ) return null;
+
+  const scale = Math.min(1, ALPHA_SAMPLE_MAX_SIZE / Math.max(naturalWidth, naturalHeight));
+  const width = Math.max(2, Math.round(naturalWidth * scale));
+  const height = Math.max(2, Math.round(naturalHeight * scale));
+
+  const canvas = globalThis.document?.createElement?.("canvas");
+  const context = canvas?.getContext?.("2d", {willReadFrequently: true});
+  if ( !context ) return null;
+
+  canvas.width = width;
+  canvas.height = height;
+  context.clearRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+  const imageData = context.getImageData(0, 0, width, height);
+  return buildAlphaContourFromAlphaData(imageData.data, width, height);
+}
+
+/**
+ * 异步加载一张 Token 图片并生成轮廓（按 `src` 缓存，失败只提示一次）。
+ *
+ * 加载完成后会排一次边界重建，让 `alpha` 形状从"矩形回退"切换成真实轮廓。
+ *
+ * @param {string} src 图片路径
+ * @returns {Promise<object|null>} 归一化轮廓
+ */
+async function ensureAlphaContour(src) {
+  if ( !src ) return null;
+  const existing = alphaContours.get(src);
+  if ( existing ) return existing.promise ?? existing.contour ?? null;
+
+  const record = {status: "loading", contour: null, promise: null};
+  record.promise = (async () => {
+    try {
+      const loadTexture = globalThis.foundry?.canvas?.loadTexture;
+      if ( typeof loadTexture !== "function" ) throw new Error("foundry.canvas.loadTexture 不可用");
+      const texture = await loadTexture(src);
+      const PIXI = globalThis.PIXI;
+      if ( PIXI?.Spritesheet && (texture instanceof PIXI.Spritesheet) ) {
+        // Token 图片一般是普通图片；图集（spritesheet）无法整张当轮廓用，直接回退矩形。
+        throw new Error("图集（spritesheet）纹理不支持图片轮廓");
+      }
+      const image = texture?.baseTexture?.resource?.source ?? null;
+      const contour = image ? buildAlphaContourFromImage(image) : null;
+      if ( !contour ) throw new Error("图片没有可用的不透明像素或无法读取 alpha");
+      record.status = "ready";
+      record.contour = contour;
+      return contour;
+    } catch ( err ) {
+      record.status = "error";
+      record.contour = null;
+      if ( !warnedAlphaContour ) {
+        warnedAlphaContour = true;
+        console.warn(`${MODULE_ID} | Token 阻挡的「图片边缘」轮廓生成失败，该 Token 将回退成矩形。`
+          + `（${err?.message ?? err}）`, err);
+      }
+      return null;
+    } finally {
+      scheduleTokenBlockingRefresh();
+    }
+  })();
+
+  alphaContours.set(src, record);
+  return record.promise;
+}
+
+/**
+ * 取某个文档要用的 alpha 轮廓（未就绪时触发一次异步加载）。
+ *
+ * @param {TokenDocument} doc 文档
+ * @returns {{points: Array<{x: number, y: number}>, width: number, height: number}|null} 轮廓或 null
+ */
+function getAlphaContour(doc) {
+  if ( getTokenBlockingShape(doc) !== "alpha" ) return null;
+  const src = getTokenTextureSource(doc);
+  if ( !src ) {
+    if ( !warnedAlphaFallback.has(String(doc?.id)) ) {
+      warnedAlphaFallback.add(String(doc?.id));
+      console.warn(`${MODULE_ID} | Token ${doc?.id ?? "?"} 选择了「图片边缘」形状但没有图片，回退成矩形。`);
+    }
+    return null;
+  }
+
+  const record = alphaContours.get(src);
+  if ( record?.status === "ready" ) return record.contour;
+  if ( !record ) void ensureAlphaContour(src);
+  return null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -295,6 +707,91 @@ export function refreshTokenBlockingEdges() {
 }
 
 /* -------------------------------------------------------------------------- */
+/*  自我豁免：包装 PolygonBackend（把"自己的边"从自己的 sweep 里去掉）              */
+/* -------------------------------------------------------------------------- */
+
+/** 需要包装的 polygon backend 类型（token 边只覆盖这 4 个通道；darkness 不涉及）。 */
+const BLOCKING_BACKEND_TYPES = Object.freeze(["move", "sight", "light", "sound"]);
+
+/** 原始 backend 类 → 包装类（避免重复包装；WeakMap 不阻止类被回收）。 */
+const backendWrappers = new WeakMap();
+
+/**
+ * 判断一条边是否是"本次 sweep 所属 Token 自己的阻挡边"。
+ *
+ * `source` 是 polygon config 里的 source（`PointVisionSource` / `PointLightSource` /
+ * `PointMovementSource` 等），其 `object` 是对应的画布对象（Token / AmbientLight…）。
+ * 我们只豁免"Token 自己的"：
+ * - 边必须是我们登记的（id 前缀）；
+ * - 边保存的 `object`（放置这条边时传的 `TokenDocument`）必须等于
+ *   `source.object.document`。
+ *
+ * AmbientLight / AmbientSound 等非 Token 来源永远不满足第二条，因此它们的 sweep 正常看到
+ * 这些边（这正是"其他来源被挡"的语义）。
+ *
+ * @param {object} edge 候选边
+ * @param {object|null|undefined} source polygon config 的 source
+ * @returns {boolean} 是"自己的边"时返回 true（调用方应跳过）
+ */
+export function isOwnTokenBlockingEdge(edge, source) {
+  const id = String(edge?.id ?? "");
+  if ( !id.startsWith(EDGE_ID_PREFIX) ) return false;
+
+  const sourceDocument = source?.object?.document ?? null;
+  if ( !sourceDocument ) return false;
+  return edge.object === sourceDocument;
+}
+
+/**
+ * 取（必要时创建）某个 PolygonBackend 的包装类。
+ *
+ * 包装类只做一件事：在 `_testEdgeInclusion` 里跳过"自己的 Token 边"，其余完全交给原类
+ * （可能与 `region-walls.mjs` 的包装层叠加，`super` 链会正确串起来）。
+ *
+ * @param {Function} PolygonBackend 原始 PolygonBackend 类
+ * @returns {Function} 包装后的子类
+ */
+function getWrappedBackend(PolygonBackend) {
+  const existing = backendWrappers.get(PolygonBackend);
+  if ( existing ) return existing;
+
+  /**
+   * 跳过"自己 Token 的阻挡边"的 PolygonBackend 子类。
+   * @extends {PolygonBackend}
+   */
+  class TokenBlockingPolygonBackend extends PolygonBackend {
+    /** @inheritDoc */
+    _testEdgeInclusion(edge, edgeTypes) {
+      if ( isOwnTokenBlockingEdge(edge, this.config?.source) ) return false;
+      return super._testEdgeInclusion(edge, edgeTypes);
+    }
+  }
+
+  backendWrappers.set(PolygonBackend, TokenBlockingPolygonBackend);
+  backendWrappers.set(TokenBlockingPolygonBackend, TokenBlockingPolygonBackend);
+  return TokenBlockingPolygonBackend;
+}
+
+/**
+ * 把 `move` / `sight` / `light` / `sound` 四种 polygon backend 换成"会跳过自己的边"的包装类。
+ *
+ * 必须在 `CONFIG.Canvas.polygonBackends` 已就绪后调用（`init.mjs` 在 `ready` 里调用
+ * `installTokenBlocking()`，此时 core 与 `region-walls` 的包装都已完成；本函数幂等）。
+ *
+ * @returns {void}
+ */
+export function installTokenBlockingPolygons() {
+  const backends = globalThis.CONFIG?.Canvas?.polygonBackends;
+  if ( !backends ) return;
+
+  for ( const type of BLOCKING_BACKEND_TYPES ) {
+    const PolygonBackend = backends[type];
+    if ( typeof PolygonBackend !== "function" ) continue;
+    backends[type] = getWrappedBackend(PolygonBackend);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /*  钩子安装                                                                     */
 /* -------------------------------------------------------------------------- */
 
@@ -308,11 +805,16 @@ export function refreshTokenBlockingEdges() {
  * 1. 边界联动：Token 增删改 / 画布就绪与拆除 / `initializeEdges`（写边的安全时刻）；
  * 2. 配置界面：`renderTokenConfig`（场景 Token）与 `renderPrototypeTokenConfig`（Actor 原型 Token）。
  *
+ * 另外安装 backend 包装层（见 {@link installTokenBlockingPolygons}）。
+ *
  * @returns {void}
  */
 export function installTokenBlocking() {
   if ( installed ) return;
   installed = true;
+
+  // 先装 backend 包装：让"自己的边不挡自己"在后面的重算里立即生效。
+  installTokenBlockingPolygons();
 
   for ( const hook of REFRESH_HOOKS ) Hooks.on(hook, scheduleTokenBlockingRefresh);
 
@@ -472,20 +974,27 @@ function toFiniteNumber(value) {
 }
 
 /**
- * 取 `CONST.EDGE_SENSE_TYPES` 的两个取值。
+ * 取 `CONST.EDGE_SENSE_TYPES` 的取值。
  *
- * `NONE` 取不到时回退 0（任务约定；本机 core 也是 0，
- * 见 `common/constants.mjs` 的 `EDGE_SENSE_TYPES`）。
+ * `NONE` / `LIMITED` 取不到时分别回退 0 / 10（本机 core 的取值，见
+ * `common/constants.mjs` 的 `EDGE_SENSE_TYPES`）。
  *
- * @returns {{normal: number, none: number}} 通道取值
+ * @returns {{normal: number, limited: number, none: number}} 通道取值
  */
 function getSenseTypes() {
   const types = globalThis.CONST?.EDGE_SENSE_TYPES ?? null;
-  return {normal: types?.NORMAL, none: types?.NONE ?? 0};
+  return {
+    normal: types?.NORMAL ?? 20,
+    limited: types?.LIMITED ?? 10,
+    none: types?.NONE ?? 0
+  };
 }
 
 /**
- * 取 `CONST.EDGE_DIRECTIONS.BOTH`（两个方向都挡）。
+ * 取 `CONST.EDGE_DIRECTIONS.BOTH`（两个方向都参与计算）。
+ *
+ * 不要用单向边（`LEFT`/`RIGHT`）来实现"不挡自己"：对凸矩形，单向方向会把远端的边也排除掉，
+ * 外面就能看穿 Token。自我豁免由 {@link isOwnTokenBlockingEdge} + backend 包装层负责。
  *
  * @returns {number} `BOTH` 的数值；常量缺失时回退 0
  */
@@ -508,7 +1017,8 @@ function collectTokenBlockingEdges() {
 
   const edges = [];
   for ( const doc of collectBlockingDocuments() ) {
-    for ( const edge of getTokenBlockingEdges(doc, {EdgeClass}) ) edges.push(edge);
+    const contour = getAlphaContour(doc);
+    for ( const edge of getTokenBlockingEdges(doc, {EdgeClass, contour}) ) edges.push(edge);
   }
   return edges;
 }
@@ -747,9 +1257,11 @@ function injectTokenBlockingTab(app, html, options) {
   if ( existing && !rebuild ) return;
   existing?.remove?.();
 
-  const blocking = getTokenBlocking(resolveConfigDocument(app));
+  const document = resolveConfigDocument(app);
+  const blocking = getTokenBlocking(document);
+  const shape = getTokenBlockingShape(document);
   const rootId = String(app?.id ?? "erqol-token-blocking");
-  anchor.insertAdjacentHTML("afterend", renderBlockingTab(group, blocking, rootId));
+  anchor.insertAdjacentHTML("afterend", renderBlockingTab(group, blocking, shape, rootId));
   bindBlockingCheckboxes(root.querySelector(`.tab[data-tab="${TAB_ID}"]`));
 
   const nav = root.querySelector(".tabs");
@@ -813,7 +1325,23 @@ function resolveConfigDocument(app) {
  * @param {string} rootId 应用 id，用于给 label/input 生成唯一 id
  * @returns {string} HTML 字符串
  */
-function renderBlockingTab(group, blocking, rootId) {
+function renderBlockingTab(group, blocking, shape, rootId) {
+  const shapeId = `${rootId}-erqol-blocking-shape`;
+  const shapeOptions = TOKEN_BLOCKING_SHAPES.map(value => {
+    const selected = (value === shape) ? " selected" : "";
+    return `<option value="${value}"${selected}>${escapeHtml(localize(`${LOC}.shape.${value}`))}</option>`;
+  }).join("");
+  const shapeRow = `
+        <div class="form-group">
+          <label for="${escapeHtml(shapeId)}">${escapeHtml(localize(`${LOC}.shape.label`))}</label>
+          <div class="form-fields">
+            <select id="${escapeHtml(shapeId)}" name="${escapeHtml(hiddenFieldName("shape"))}">
+              ${shapeOptions}
+            </select>
+          </div>
+          <p class="hint">${escapeHtml(localize(`${LOC}.shape.hint`))}</p>
+        </div>`;
+
   const rows = TOKEN_BLOCKING_KEYS.map(key => {
     const fieldId = `${rootId}-erqol-blocking-${key}`;
     const checked = blocking[key] ? " checked" : "";
@@ -831,7 +1359,7 @@ function renderBlockingTab(group, blocking, rootId) {
   return `<div class="tab scrollable" data-group="${escapeHtml(group)}" data-tab="${TAB_ID}">
       <fieldset>
         <legend>${escapeHtml(localize(`${LOC}.legend`))}</legend>
-        <p class="hint">${escapeHtml(localize(`${LOC}.hint`))}</p>${rows}
+        <p class="hint">${escapeHtml(localize(`${LOC}.hint`))}</p>${shapeRow}${rows}
       </fieldset>
     </div>`;
 }

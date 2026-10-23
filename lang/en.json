@@ -122,15 +122,7 @@
     "SETTINGS": {
       "wallHint": {
         "name": "Wall Outlines On Other Layers",
-        "hint": "Draw a thin line for every wall even when the Walls layer is not active, so players can see where the real wall lines are. Uses one uniform color instead of the per-type wall colors, so secret doors are not revealed."
-      },
-      "wallHintColor": {
-        "name": "Wall Outline Color",
-        "hint": "Uniform color used for the wall outline hints. Deliberately not the Walls-layer color, which would give secret doors away."
-      },
-      "wallHintWidth": {
-        "name": "Wall Outline Width",
-        "hint": "Line width in pixels at the current UI scale."
+        "hint": "Draw wall outlines even when the Walls layer is not active, so players can see where the real wall lines are. By default every wall is drawn in one uniform color, so secret doors are not revealed."
       },
       "wallHintOpacity": {
         "name": "Wall Outline Opacity",
@@ -142,9 +134,33 @@
         "otherLayers": "Only On Other Layers",
         "always": "Always"
       },
+      "wallHintLines": {
+        "name": "Wall Outline Styles",
+        "menu": "Configure Wall Outline Styles",
+        "hint": "Define one or more outline styles. Each wall uses the highest-priority style whose condition it matches.",
+        "description": "Each row is one outline style. When a wall matches several rows, the row with the highest priority wins; the condition is matched against the senses the wall blocks, never against the wall type. The default (no rows configured) draws every wall in one uniform color.",
+        "line": "Style",
+        "style": "Line Style",
+        "color": "Color",
+        "width": "Width",
+        "priority": "Priority",
+        "priorityHint": "Higher numbers win when a wall matches more than one style. Equal priorities use the row order.",
+        "blocking": "Condition",
+        "blockingHint": "Match walls that block at least one checked sense. Leave all unchecked to match every wall.",
+        "add": "Add Style",
+        "delete": "Remove",
+        "reset": "Reset to Default",
+        "save": "Save",
+        "defaultHint": "With no styles configured, every wall (secret doors included) is drawn with one uniform color. Walls that match no row are not drawn."
+      },
+      "wallLineStyles": {
+        "solid": "Solid",
+        "dashed": "Dashed",
+        "dotted": "Dotted",
+        "dashdot": "Dash-Dot",
+        "dashdotdot": "Dash-Dot-Dot"
+      },
       "wallHintBlocking": {
-        "name": "Wall Outline Filter",
-        "hint": "Draw outlines only for walls that block at least one of the checked types. Leave all unchecked to draw every wall. Secret doors are drawn like any other wall.",
         "move": "Blocks Movement",
         "sight": "Blocks Sight",
         "sound": "Blocks Sound",
@@ -159,22 +175,29 @@
     "TOKEN_BLOCKING": {
       "tab": "Blocking",
       "legend": "Block Movement / Senses",
-      "hint": "Make this token block movement and senses like a wall. Applies to the token's prototype, so newly placed tokens inherit it.",
+      "hint": "Make this token block movement and senses like a one-way wall: the token itself is never blocked by its own space, while other tokens are.",
+      "shape": {
+        "label": "Blocking Shape",
+        "hint": "Outline used by the blocking space. Rectangle = the token's grid space; Ellipse = an oval inside that space; Image Edge = follow the opaque pixels of the token image (experimental; transparent parts are ignored, and it falls back to a rectangle if the image cannot be read).",
+        "rect": "Rectangle",
+        "ellipse": "Ellipse / Circle",
+        "alpha": "Image Edge (experimental)"
+      },
       "move": {
         "label": "Blocks Movement",
-        "hint": "Prevent tokens and movement paths from crossing this token's space."
+        "hint": "Other tokens and movement paths cannot enter this token's space. The token itself still moves normally."
       },
       "sight": {
         "label": "Blocks Sight",
-        "hint": "Prevent line of sight and visibility from crossing this token's space."
+        "hint": "Other tokens can see this token but not through it. The token itself sees normally."
       },
       "sound": {
         "label": "Blocks Sound",
-        "hint": "Prevent sound from crossing this token's space."
+        "hint": "Sound does not pass through this token's space. The token's own sound is not blocked."
       },
       "light": {
         "label": "Blocks Light",
-        "hint": "Prevent light from crossing this token's space."
+        "hint": "Light does not pass through this token's space. The token's own light is not blocked."
       }
     }
   }

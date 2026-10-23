@@ -1,0 +1,77 @@
+<div class="erqol-wall-hint-lines">
+  <p class="notes">{{localize "ERQOL.SETTINGS.wallHintLines.description"}}</p>
+
+  {{#each lines as |line|}}
+  <fieldset class="erqol-wall-line" data-line-index="{{line.index}}">
+    <legend>
+      {{localize "ERQOL.SETTINGS.wallHintLines.line"}} #{{line.number}}
+    </legend>
+
+    <div class="form-group">
+      <label>{{localize "ERQOL.SETTINGS.wallHintLines.style"}}</label>
+      <div class="form-fields">
+        <select data-field="style">
+          {{#each line.styleOptions as |option|}}
+          <option value="{{option.value}}" {{#if option.selected}}selected{{/if}}>{{option.label}}</option>
+          {{/each}}
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>{{localize "ERQOL.SETTINGS.wallHintLines.color"}}</label>
+      <div class="form-fields">
+        <input type="color" data-field="color" value="{{line.color}}">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>{{localize "ERQOL.SETTINGS.wallHintLines.width"}}</label>
+      <div class="form-fields">
+        <input type="number" data-field="width" value="{{line.width}}"
+               min="1" max="10" step="0.5">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>{{localize "ERQOL.SETTINGS.wallHintLines.priority"}}</label>
+      <div class="form-fields">
+        <input type="number" data-field="priority" value="{{line.priority}}"
+               min="-9999" max="9999" step="1">
+      </div>
+      <p class="hint">{{localize "ERQOL.SETTINGS.wallHintLines.priorityHint"}}</p>
+    </div>
+
+    <div class="form-group">
+      <label>{{localize "ERQOL.SETTINGS.wallHintLines.blocking"}}</label>
+      <div class="form-fields erqol-wall-line-blocking">
+        {{#each line.channels as |channel|}}
+        <label class="checkbox">
+          <input type="checkbox" data-channel="{{channel.key}}" {{#if channel.checked}}checked{{/if}}>
+          {{channel.label}}
+        </label>
+        {{/each}}
+      </div>
+      <p class="hint">{{localize "ERQOL.SETTINGS.wallHintLines.blockingHint"}}</p>
+    </div>
+
+    <button type="button" class="erqol-wall-line-delete" data-action="deleteLine" data-index="{{line.index}}">
+      <i class="fa-solid fa-trash" inert></i>
+      {{localize "ERQOL.SETTINGS.wallHintLines.delete"}}
+    </button>
+  </fieldset>
+  {{/each}}
+
+  <div class="erqol-wall-line-buttons">
+    <button type="button" data-action="addLine">
+      <i class="fa-solid fa-plus" inert></i>
+      {{localize "ERQOL.SETTINGS.wallHintLines.add"}}
+    </button>
+    <button type="button" data-action="resetLines">
+      <i class="fa-solid fa-rotate-left" inert></i>
+      {{localize "ERQOL.SETTINGS.wallHintLines.reset"}}
+    </button>
+  </div>
+
+  <p class="hint">{{localize "ERQOL.SETTINGS.wallHintLines.defaultHint"}}</p>
+</div>

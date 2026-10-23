@@ -1,7 +1,7 @@
 /**
  * er-qol 模组设置的唯一注册点。
  *
- * 所有 `game.settings.register(MODULE_ID, ...)` 调用都集中在这里，
+ * 所有 `game.settings.register` / `registerMenu` 调用都集中在这里，
  * 好处是设置键、默认值与本地化键在一个文件里对齐，子模块只读不注册：
  *
  * ```js
@@ -11,10 +11,24 @@
  *
  * 必须在 `Hooks.once("init")` 中调用 {@link registerModuleSettings}。
  *
+ * ## 墙体提示线的设置形态（2026-10-23 改为"多条线"）
+ *
+ * - `wallHint` / `wallHintOpacity` / `wallHintScope`：仍然直接显示在模组设置面板里；
+ * - `wallHintLines`：一组线定义，`config: false`，通过一个**自定义设置子菜单**
+ *   （`WallHintLinesConfig`，见 `wall-hint-config.mjs`）编辑；
+ * - 默认 `[]` = 使用内置默认线（统一颜色、所有墙体一律绘制），
+ *   这样"默认配置不泄露密门"的保证与旧版一致。
+ *
  * @module er-qol/scripts/settings
  */
 
 import {MODULE_ID} from "./region-common.mjs";
+import {
+  DEFAULT_WALL_HINT_COLOR,
+  DEFAULT_WALL_HINT_WIDTH,
+  WALL_HINT_BLOCKING_TYPES
+} from "./wall-hint-lines.mjs";
+import {WALL_HINT_LINES_SETTING, WallHintLinesConfig} from "./wall-hint-config.mjs";
 
 // 便于子模块只 import 一个文件：设置模块同时转发模组 id。
 export {MODULE_ID};
@@ -26,30 +40,26 @@ export {MODULE_ID};
  * Region 行为自身的配置在 Behavior 的 schema 里，不走 `game.settings`。
  */
 export const SETTINGS = Object.freeze({
-  /** 墙体提示线：总开关。 */
+  /** 墙体提示线：总开关 + 透明度 + 显示范围 + 多条线定义。 */
   WALL_HINT: Object.freeze({
     ENABLED: "wallHint",
-    COLOR: "wallHintColor",
-    WIDTH: "wallHintWidth",
     OPACITY: "wallHintOpacity",
     SCOPE: "wallHintScope",
-    /** 多选：按墙体阻挡类型过滤；空集合 = 任何墙体都画。 */
-    BLOCKING: "wallHintBlocking"
+    LINES: WALL_HINT_LINES_SETTING
   })
 });
 
 /**
- * 墙体提示线的"按阻挡类型过滤"可选项。
+ * 线条件里可用通道的本地化键（顺序与 `WALL_HINT_BLOCKING_TYPES` 一致）。
  *
- * 空集合表示不过滤；否则是**或**关系（勾了"移动"就画所有阻挡移动的墙，
- * 勾了"移动 + 视野"就画阻挡任一项的墙）。
+ * 设置菜单里每行用复选框展示这四项；空 = 所有墙体都满足条件。
  */
-export const WALL_HINT_BLOCKING_CHOICES = Object.freeze({
-  move: "ERQOL.SETTINGS.wallHintBlocking.move",
-  sight: "ERQOL.SETTINGS.wallHintBlocking.sight",
-  sound: "ERQOL.SETTINGS.wallHintBlocking.sound",
-  light: "ERQOL.SETTINGS.wallHintBlocking.light"
-});
+export const WALL_HINT_BLOCKING_CHOICES = Object.freeze(
+  Object.fromEntries(WALL_HINT_BLOCKING_TYPES.map(key => [key, `ERQOL.SETTINGS.wallHintBlocking.${key}`]))
+);
+
+/** 墙体提示线设置菜单的键（`game.settings.registerMenu` 用）。 */
+export const WALL_HINT_LINES_MENU = "wallHintLinesMenu";
 
 /**
  * 注册全部模组设置。
@@ -63,7 +73,7 @@ export function registerModuleSettings() {
 }
 
 /**
- * 注册"墙体提示线"相关的 6 个客户端设置。
+ * 注册"墙体提示线"相关的设置与设置子菜单。
  *
  * 单独拆出来是为了让 `wall-hint.mjs` 的接线清晰：该模块只读这些键，不重复注册。
  *
@@ -79,29 +89,6 @@ export function registerWallHintSettings() {
     config: true,
     type: Boolean,
     default: false
-  });
-
-  game.settings.register(MODULE_ID, HINT.COLOR, {
-    name: "ERQOL.SETTINGS.wallHintColor.name",
-    hint: "ERQOL.SETTINGS.wallHintColor.hint",
-    scope: "client",
-    config: true,
-    // 用 DataField 实例注册，核心配置面板才会渲染成取色器
-    // （`type: String` 会被包成普通 StringField，只给一个文本框；见 core 的 settings/config.mjs）。
-    // ColorField 是 StringField 的子类，读写仍然是 `#rrggbb` 字符串，与 getStringSetting 兼容；
-    // 万一该字段不可用则退回普通字符串输入。
-    type: getColorFieldType(),
-    default: "#00e5ff"
-  });
-
-  game.settings.register(MODULE_ID, HINT.WIDTH, {
-    name: "ERQOL.SETTINGS.wallHintWidth.name",
-    hint: "ERQOL.SETTINGS.wallHintWidth.hint",
-    scope: "client",
-    config: true,
-    type: Number,
-    range: {min: 1, max: 10, step: 0.5},
-    default: 2
   });
 
   game.settings.register(MODULE_ID, HINT.OPACITY, {
@@ -127,69 +114,32 @@ export function registerWallHintSettings() {
     default: "otherLayers"
   });
 
-  game.settings.register(MODULE_ID, HINT.BLOCKING, {
-    name: "ERQOL.SETTINGS.wallHintBlocking.name",
-    hint: "ERQOL.SETTINGS.wallHintBlocking.hint",
+  // 多条线定义：只有一个普通的 JSON 数组，编辑界面由下面的子菜单负责。
+  // 不能注册成需要 `_toInput` 的字段（例如带自定义 schema 的 ArrayField）——那会在
+  // 设置面板里渲染成空白；`config: false` 让它不出现在主面板，菜单负责编辑。
+  //
+  // 类型用 `Object` 而不是 `Array`：core 的 `Setting#_castType()` 把 `Array` 当"基础类型"
+  // 直接调用 `Array(value)`，对已经是数组的值会套成 `[value]`（多包一层）；
+  // `Object(value)` 对数组/对象都原样返回。
+  game.settings.register(MODULE_ID, HINT.LINES, {
+    name: "ERQOL.SETTINGS.wallHintLines.name",
+    hint: "ERQOL.SETTINGS.wallHintLines.hint",
     scope: "client",
-    config: true,
-    // 多选：必须是实现了 `_toInput` 的字段实例（见 getBlockingFieldType 的说明），
-    // 而且 choices 要挂在**字段**上，core 不会把 setting.choices 传进 DataField。
-    // 这里的 setting.choices 只服务退化分支（`type: Array`）——那时 core 会把它包成
-    // `StringField(choices)`（单选下拉），至少让选项可见；正常环境走字段分支时该属性被忽略。
-    // 空集合 = 不过滤，任何墙体都画。
-    type: getBlockingFieldType(),
-    choices: {...WALL_HINT_BLOCKING_CHOICES},
+    config: false,
+    type: Object,
     default: []
   });
-}
 
-/**
- * 取用于"按阻挡类型过滤"设置的字段类型。
- *
- * **必须用 `SetField`（它实现了 `_toInput` → 多选控件）**：
- * - `ArrayField` 没有 `_toInput`，基类会抛错、`formGroup` 捕到后渲染成**空字符串**，
- *   于是设置面板里这一项**根本不显示**；
- * - `choices` 也**必须挂在字段实例上**：core 对 DataField 类型只做 `data.field = setting.type`，
- *   不会把 `setting.choices` 传进字段（`applications/settings/config.mjs`）。
- *
- * 渲染结果是 `<multi-select>`：从下拉里选一项即添加（该项随即 disabled），
- * 点已选标签上的 ✕ 移除——**不需要按 Ctrl/Cmd**。
- * `SetField#clean()` 仍写数组、`initialize()` 返回 `Set`，两者都被 `getArraySetting()` 兼容。
- *
- * 拿不到 `foundry.data.fields` 时退回 `Array`；core 会把它包成
- * `ArrayField(StringField + setting.choices)`（单选，仅在退化环境下发生）。
- *
- * @returns {Function|object} 字段构造函数或字段实例
- */
-function getBlockingFieldType() {
-  const fields = globalThis.foundry?.data?.fields;
-  if ( typeof fields?.SetField !== "function" || typeof fields?.StringField !== "function" ) return Array;
-  try {
-    return new fields.SetField(
-      new fields.StringField({required: true, blank: false, choices: {...WALL_HINT_BLOCKING_CHOICES}}),
-      {required: true, nullable: false, initial: []}
-    );
-  } catch ( err ) {
-    return Array;
-  }
-}
-
-/**
- * 取用于颜色设置的字段类型：优先 `foundry.data.fields.ColorField`（配置面板渲染成取色器），
- * 该字段不可用时退回 `String`（退化为文本框，功能不受影响）。
- *
- * 每次读取都新建一个字段实例——`game.settings.register` 要求 `type` 是字段**实例**
- * 才会走 DataField 分支（core 的 `applications/settings/config.mjs`）。
- *
- * @returns {Function|object} 字段构造函数或字段实例
- */
-function getColorFieldType() {
-  const ColorField = globalThis.foundry?.data?.fields?.ColorField;
-  if ( typeof ColorField !== "function" ) return String;
-  try {
-    return new ColorField({required: true, nullable: false, initial: "#00e5ff"});
-  } catch ( err ) {
-    return String;
+  // 设置子菜单：真实 Foundry 一定有 registerMenu；Node 自测环境可能没有，跳过即可。
+  if ( typeof game.settings.registerMenu === "function" ) {
+    game.settings.registerMenu(MODULE_ID, WALL_HINT_LINES_MENU, {
+      name: "ERQOL.SETTINGS.wallHintLines.name",
+      label: "ERQOL.SETTINGS.wallHintLines.menu",
+      hint: "ERQOL.SETTINGS.wallHintLines.hint",
+      icon: "fa-solid fa-pen-ruler",
+      type: WallHintLinesConfig,
+      restricted: false
+    });
   }
 }
 
@@ -207,6 +157,24 @@ export function isWallHintSettingKey(key) {
 }
 
 /**
+ * 读取原始设置值（任意类型），读取失败/缺省时回退。
+ *
+ * 与下面几个 `get*Setting` 的区别：不做类型转换，适合 `wallHintLines` 这种对象数组。
+ *
+ * @param {string} key 设置键
+ * @param {*} [fallback=null] 读取失败时的回退值
+ * @returns {*} 设置值
+ */
+export function getSetting(key, fallback = null) {
+  try {
+    const value = game.settings.get(MODULE_ID, key);
+    return (value === null) || (value === undefined) ? fallback : value;
+  } catch ( err ) {
+    return fallback;
+  }
+}
+
+/**
  * 读取字符串数组设置（多选类）。
  *
  * 兼容三种存法：真正的数组、`Set`（字段类型是 SetField 时），以及单值（旧数据）。
@@ -216,12 +184,7 @@ export function isWallHintSettingKey(key) {
  * @returns {string[]} 字符串数组
  */
 export function getArraySetting(key, fallback = []) {
-  let value;
-  try {
-    value = game.settings.get(MODULE_ID, key);
-  } catch ( err ) {
-    return [...fallback];
-  }
+  const value = getSetting(key, fallback);
   if ( value instanceof Set ) return [...value].map(String);
   if ( Array.isArray(value) ) return value.map(String);
   if ( (value === null) || (value === undefined) || (value === "") ) return [...fallback];
@@ -274,3 +237,9 @@ export function getStringSetting(key, fallback = "") {
     return fallback;
   }
 }
+
+/** 默认颜色/宽度（供菜单页脚提示与自测读取，导出自本文件避免拼写漂移）。 */
+export const WALL_HINT_DEFAULTS = Object.freeze({
+  color: DEFAULT_WALL_HINT_COLOR,
+  width: DEFAULT_WALL_HINT_WIDTH
+});

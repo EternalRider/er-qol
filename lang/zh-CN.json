@@ -34,27 +34,27 @@
       "FIELDS": {
         "move": {
           "label": "阻挡移动",
-          "hint": "阻止 Token 穿越这个 Region 边界。"
+          "hint": "阻止 Token 穿过这个 Region 边界。"
         },
         "sight": {
-          "label": "阻挡视觉",
-          "hint": "阻止视线与可见性判定穿越这个 Region 边界。"
+          "label": "阻挡视野",
+          "hint": "阻止视线与可见性判定穿过这个 Region 边界。"
         },
         "light": {
           "label": "阻挡光照",
-          "hint": "阻止光源投射穿越这个 Region 边界。"
+          "hint": "阻止光源穿过这个 Region 边界。"
         },
         "sound": {
           "label": "阻挡声音",
-          "hint": "阻止声源传播穿越这个 Region 边界。"
+          "hint": "阻止声源穿过这个 Region 边界。"
         },
         "darkness": {
           "label": "阻挡黑暗",
-          "hint": "阻止黑暗源投射穿越这个 Region 边界。"
+          "hint": "阻止黑暗源穿过这个 Region 边界。"
         },
         "direction": {
           "label": "阻挡方向",
-          "hint": "选择边界是双向阻挡，还是只按 Region 内外关系单向阻挡。"
+          "hint": "选择边界是双向阻挡，还是只按 Region 内/外单向阻挡。"
         }
       },
       "DIRECTIONS": {
@@ -62,10 +62,10 @@
           "label": "双向"
         },
         "insideToOutside": {
-          "label": "仅从内到外"
+          "label": "仅内 → 外"
         },
         "outsideToInside": {
-          "label": "仅从外到内"
+          "label": "仅外 → 内"
         }
       }
     },
@@ -74,28 +74,28 @@
       "hint": "Token 进入或离开这个 Region 时发送通知或聊天消息。",
       "FIELDS": {
         "notifyEntry": {
-          "label": "进入时提示",
-          "hint": "Token 进入这个 Region 时发出提示。"
+          "label": "进入时播报",
+          "hint": "Token 进入这个 Region 时播报。"
         },
         "notifyExit": {
-          "label": "离开时提示",
-          "hint": "Token 离开这个 Region 时发出提示。"
+          "label": "离开时播报",
+          "hint": "Token 离开这个 Region 时播报。"
         },
         "entryMessage": {
           "label": "进入消息",
-          "hint": "可选。支持 {token} 与 {region} 占位符。留空使用默认文本。"
+          "hint": "可选，支持 {token} 与 {region} 占位符；留空使用默认文本。"
         },
         "exitMessage": {
           "label": "离开消息",
-          "hint": "可选。支持 {token} 与 {region} 占位符。留空使用默认文本。"
+          "hint": "可选，支持 {token} 与 {region} 占位符；留空使用默认文本。"
         },
         "output": {
           "label": "输出方式",
-          "hint": "以界面通知或聊天消息的形式发出。"
+          "hint": "以 UI 通知或聊天消息的形式播报。"
         },
         "visibility": {
           "label": "可见范围",
-          "hint": "谁可以收到这条提示。"
+          "hint": "谁应该收到这条播报。"
         },
         "soundEnabled": {
           "label": "播放音效"
@@ -110,7 +110,7 @@
         }
       },
       "OUTPUT": {
-        "notification": "界面通知",
+        "notification": "UI 通知",
         "chat": "聊天消息"
       },
       "VISIBILITY": {
@@ -122,29 +122,45 @@
     "SETTINGS": {
       "wallHint": {
         "name": "其他图层显示墙体线",
-        "hint": "即使不在墙体图层，也为每面墙画一条细线，方便玩家看清真实墙体线的位置。使用统一颜色而不是墙体图层那套按类别上色，避免暴露密门。"
-      },
-      "wallHintColor": {
-        "name": "墙体线提示颜色",
-        "hint": "提示线使用的统一颜色。刻意不用墙体图层的类别色，否则密门会被一眼看出来。"
-      },
-      "wallHintWidth": {
-        "name": "墙体线提示线宽",
-        "hint": "按当前 UI 缩放下的像素线宽。"
+        "hint": "即使不在墙体图层，也为每面墙画出提示线，让玩家看得到真实墙线的位置。默认所有墙体用同一种颜色绘制，因此不会暴露密门。"
       },
       "wallHintOpacity": {
-        "name": "墙体线提示不透明度",
-        "hint": "提示线的整体不透明度。"
+        "name": "墙体线不透明度",
+        "hint": "墙体提示线的不透明度。"
       },
       "wallHintScope": {
-        "name": "墙体线提示显示时机",
-        "hint": "「仅其他图层」在墙体图层激活时隐藏提示（那时本来就能看到真实墙体）；「始终显示」则一直保留。",
+        "name": "墙体线显示时机",
+        "hint": "“仅其他图层”在墙体图层激活时隐藏提示线（那里本来就能看到真墙）；“始终”则一直显示。",
         "otherLayers": "仅其他图层",
         "always": "始终显示"
       },
+      "wallHintLines": {
+        "name": "墙体线样式",
+        "menu": "配置墙体线样式",
+        "hint": "可定义多条提示线；每面墙使用其命中的、优先级最高的那条样式。",
+        "description": "每一行是一种墙体线样式。同一面墙命中多行时，取优先级最高的那一行；条件只按“墙体阻挡了哪些感知”判断，绝不按墙体类型判断。默认（未配置任何行）时所有墙体统一一种颜色。",
+        "line": "样式",
+        "style": "线型",
+        "color": "颜色",
+        "width": "宽度",
+        "priority": "优先级",
+        "priorityHint": "数字越大越优先；优先级相同时按行顺序取靠前的。",
+        "blocking": "条件",
+        "blockingHint": "只画“至少阻挡其中一项”的墙体；全不勾 = 所有墙体都满足。",
+        "add": "添加样式",
+        "delete": "删除",
+        "reset": "恢复默认",
+        "save": "保存",
+        "defaultHint": "未配置任何样式时，所有墙体（含密门）都用同一种颜色绘制；只有你主动添加的行才会引入差别。没有命中任何行的墙体不会被绘制。"
+      },
+      "wallLineStyles": {
+        "solid": "实线",
+        "dashed": "虚线",
+        "dotted": "点线",
+        "dashdot": "点划线",
+        "dashdotdot": "双点划线"
+      },
       "wallHintBlocking": {
-        "name": "墙体线过滤（阻挡类型）",
-        "hint": "只为「至少阻挡所勾选类型之一」的墙体绘制提示线。全部不勾选 = 所有墙体都绘制。密门与普通墙一样绘制。",
         "move": "阻挡移动",
         "sight": "阻挡视野",
         "sound": "阻挡声音",
@@ -152,29 +168,36 @@
       }
     },
     "NOTIFY": {
-      "regionEntry": "{token} 进入了区域「{region}」。",
-      "regionExit": "{token} 离开了区域「{region}」。",
-      "unnamedRegion": "未命名区域"
+      "regionEntry": "{token} 进入了区域 {region}。",
+      "regionExit": "{token} 离开了区域 {region}。",
+      "unnamedRegion": "区域"
     },
     "TOKEN_BLOCKING": {
       "tab": "阻挡",
       "legend": "阻挡移动 / 感知",
-      "hint": "让这个 Token 像墙一样阻挡移动与感知。配置写在原型 Token 上，之后放置的 Token 会继承。",
+      "hint": "让该 Token 像单向墙一样阻挡移动与感知：它自己不会被自己的范围挡住，其他 Token 则会被挡。",
+      "shape": {
+        "label": "阻挡形状",
+        "hint": "阻挡范围使用的轮廓：矩形 = Token 占位格；椭圆 = 占位矩形内的圆/椭圆；图片边缘 = 按 Token 图片的不透明像素生成（实验性，忽略透明部分；图片无法读取时回退成矩形）。",
+        "rect": "矩形",
+        "ellipse": "椭圆 / 圆形",
+        "alpha": "图片边缘（实验性）"
+      },
       "move": {
         "label": "阻挡移动",
-        "hint": "阻止 Token 与移动路径穿过这个 Token 占用的格子。"
+        "hint": "其他 Token 与移动路径不能进入该 Token 的范围；它自己的移动不受影响。"
       },
       "sight": {
         "label": "阻挡视野",
-        "hint": "阻止视线与可见性判定穿过这个 Token 占用的格子。"
+        "hint": "其他 Token 能看见它，但看不穿它；它自己的视线不受影响。"
       },
       "sound": {
         "label": "阻挡声音",
-        "hint": "阻止声音穿过这个 Token 占用的格子。"
+        "hint": "声音无法穿过该 Token 的范围；它自己发出的声音不受影响。"
       },
       "light": {
         "label": "阻挡光照",
-        "hint": "阻止光照穿过这个 Token 占用的格子。"
+        "hint": "光照无法穿过该 Token 的范围；它自己的光照不受影响。"
       }
     }
   }
