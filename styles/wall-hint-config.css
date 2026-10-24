@@ -1,0 +1,132 @@
+/* er-qol：墙体线样式设置子菜单（WallHintLinesConfig）的布局微调。
+ *
+ * 只修"外观/可用性"，不改任何功能：
+ * - 让窗口内容可滚动，保证 body 再长也不会把 footer 的「保存」按钮挤出窗口；
+ * - 颜色 / 数字输入改成紧凑宽度（原生 color input 默认会拉满整行）；
+ * - 条件复选框横向排布；
+ * - 「删除」按钮靠右、不再整行铺满；
+ * - 「添加样式 / 恢复默认」排成一行、按内容宽度显示。
+ */
+
+.erqol-wall-hint-lines-content {
+  /* ApplicationV2 的 .window-content 默认 overflow:hidden；这里保持它，
+     把滚动交给内部 .erqol-lines，footer 才会一直可见。 */
+  overflow: hidden;
+}
+
+.erqol-wall-hint-lines {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.erqol-wall-hint-lines .erqol-wall-hint-notes {
+  flex: 0 0 auto;
+  margin: 0 0 0.25rem;
+}
+
+.erqol-wall-hint-lines .erqol-lines {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding-inline-end: 0.35rem;
+}
+
+.erqol-wall-hint-lines fieldset.erqol-wall-line {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.4rem 0.75rem 0.6rem;
+  border: 1px solid var(--color-border-light-primary, rgba(0, 0, 0, 0.25));
+  border-radius: 6px;
+}
+
+.erqol-wall-hint-lines fieldset.erqol-wall-line > legend {
+  padding: 0 0.35rem;
+  font-weight: 600;
+}
+
+.erqol-wall-hint-lines fieldset.erqol-wall-line .form-group {
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.25rem 0;
+}
+
+.erqol-wall-hint-lines fieldset.erqol-wall-line .form-group > label {
+  flex: 0 0 auto;
+  min-width: 5.5rem;
+}
+
+.erqol-wall-hint-lines fieldset.erqol-wall-line .form-group > .hint {
+  grid-column: 1 / -1;
+  margin: 0.15rem 0 0;
+}
+
+.erqol-wall-hint-lines input[type="color"] {
+  inline-size: 4rem;
+  min-inline-size: 4rem;
+  block-size: 2rem;
+  padding: 0.1rem;
+  cursor: pointer;
+}
+
+.erqol-wall-hint-lines input[type="number"] {
+  inline-size: 6rem;
+  text-align: center;
+}
+
+.erqol-wall-hint-lines .erqol-wall-line-blocking {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.25rem 0.9rem;
+}
+
+.erqol-wall-hint-lines .erqol-wall-line-blocking label.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+
+.erqol-wall-hint-lines .erqol-wall-line-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.35rem;
+}
+
+.erqol-wall-hint-lines .erqol-wall-line-delete {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.35rem;
+  inline-size: auto;
+  padding: 0.25rem 0.6rem;
+}
+
+.erqol-wall-hint-lines .erqol-wall-line-buttons {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-start;
+}
+
+.erqol-wall-hint-lines .erqol-wall-line-buttons button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.35rem;
+  inline-size: auto;
+  padding: 0.3rem 0.7rem;
+}
+
+.erqol-wall-hint-lines .erqol-wall-hint-default-hint {
+  flex: 0 0 auto;
+  margin: 0;
+}

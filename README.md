@@ -1,140 +1,219 @@
-# EternalRider's QoL (er-qol)
+# EternalRider's QoL（er-qol）
 
-A Foundry VTT **Region quality-of-life** module for Foundry **V14**: it bundles the former
-`region-lighting` and `region-walls` behaviors into one package and adds more Region tools plus a
-wall-outline overlay.
+> A lightweight quality-of-life module for **Foundry Virtual Tabletop V14** — Region lighting, wall-like
+> Region boundaries, region announcements, wall outlines on other layers, and token blocking.
+>
+> [中文](#中文) · [English](#english)
 
-> This module **supersedes** `region-lighting` and `region-walls`. Those two were never released —
-> they only ever existed as local builds — so `er-qol` does **not** carry their behavior-type keys
-> over. Everything uses the `er-qol.*` namespace (see [Compatibility](#compatibility)).
-> **Disable or remove `region-lighting` / `region-walls` when you enable `er-qol`.**
-> One exception: the local `swpt` module gates its `buildRegionLightingData()` /
-> `buildRegionWallData()` helpers on `game.modules.get("region-lighting")?.active`, so if you rely on
-> those helpers keep the old modules enabled too — but note that Region behaviors created with their
-> old type keys will then be driven by the old modules, not by `er-qol`.
+---
 
-## Features
+## 中文
 
-### 1. Region Lighting *(from region-lighting)*
+**er-qol（EternalRider's QoL）** 是一个面向 Foundry Virtual Tabletop **V14** 的轻量 QoL 模组，
+把几个常用但零散的小功能集中到一起：用 Region 做光照/墙体/播报，在其他图层也画出墙线，
+以及让 Token 像墙一样阻挡移动与感知。全部功能都是客户端/Region 行为级别，**不依赖任何游戏系统**。
 
-A Region Behavior that emits **light or darkness using the Region's own shape and elevation range**,
-instead of a point light with a radius. Supports the full Foundry light configuration
-(alpha, bright/dim, color, coloration, attenuation, luminosity, saturation, contrast, shadows,
-animations, darkness min/max) plus a **priority** value that lets a Region light/darkness override
-lower-priority sources.
+### 功能
 
-### 2. Region Walls *(from region-walls)*
+#### 1. 区域光照（Region Lighting）
 
-A Region Behavior that turns the Region boundary into a **wall-like blocker**, per channel:
+一个 **Region Behavior**：用 Region 的完整形状与高度范围发出**光照或黑暗**，而不是只能放一个点光源。
+
+- 支持 Foundry 光照的全部常用设置（亮度、颜色、衰减、阴影、动画等）；
+- 支持 **priority（优先级）**，可覆盖更低优先级的光源/黑暗源；
+- 适合做"这片走廊是暗的""这个房间有烛光"这类与地形完全贴合的光照。
+
+#### 2. 区域墙体（Region Walls）
+
+一个 **Region Behavior**：把 Region 边界变成"墙"，可按通道分别阻挡：
+
+| 通道 | 含义 |
+| --- | --- |
+| 移动 | Token 不能穿过 Region 边界 |
+| 视野 | 视线与可见性不能穿过 |
+| 光照 | 光照不能穿过 |
+| 声音 | 声音不能穿过 |
+| 黑暗 | 黑暗不能穿过 |
+| 方向 | 双向 / 仅从内到外 / 仅从外到内 |
+
+并且支持**高度范围**：只有 Region 的高度区间与穿行高度重叠时才生效。
+
+#### 3. 区域播报（Region Announce）
+
+一个 **Region Behavior**：Token 进入/离开 Region 时发送提示。
+
+- 进入、离开分别开关，消息支持 `{token}` / `{region}` 占位符；
+- 输出方式：UI 通知或聊天消息；
+- 可见范围：所有人 / GM 与 Token 所有者 / 仅 GM；
+- 可选音效与音量。
+
+#### 4. 其他图层墙线提示（Wall Outlines On Other Layers）
+
+客户端设置：即使当前不在"墙体"图层，也把每面墙的真实位置画出来，方便玩家移动 Token。
+
+- **默认是一条统一颜色的线、所有类型的墙体（包括密门）都照常绘制**——每根线看起来一样，
+  不会把密门单独标出来；
+- **可配置多条线**：打开设置里的「配置墙体线样式」，可以添加多条线，每条线单独配置：
+  - **线型**：实线 / 虚线 / 点线 / 点划线 / 双点划线；
+  - **颜色**、**宽度**；
+  - **条件**：只画"至少阻挡了某一项感知"的墙体（空 = 所有墙体）；
+  - **优先级**：同一面墙命中多条线时，画优先级最高的那条（同优先级取顺序靠前的）。
+- 另有全局透明度，以及显示范围：仅其他图层 / 始终显示。
+- 线的条件只按"墙阻挡了哪些感知"判断，**不会按墙体类型上色或跳过**，因此不会泄露密门。
+
+#### 5. Token 阻挡（Token Blocking）
+
+让一个 Token（以及 Actor 的原型 Token）像墙一样阻挡移动与感知。
+
+- 配置入口：Token 配置窗口里、**紧跟「光照」之后的「阻挡」tab**；
+- 配置保存在 **原型 Token** 上，之后新放置的 Token 自动继承；
+- 四个通道可独立勾选：**阻挡移动 / 阻挡视野 / 阻挡声音 / 阻挡光照**；
+- **不会挡住自己**：Token 自己的移动、视野、光照、声音不受自己范围影响；
+  其他 Token 进不去它的范围，并且**能看见它、但看不穿它**（类似单向墙）；
+- **阻挡形状**可配置：
+  - **矩形**（默认）：Token 占用的格子；
+  - **椭圆 / 圆形**：格子内切椭圆；
+  - **图片边缘（实验性）**：按 Token 图片的不透明像素生成轮廓，**忽略透明部分**；
+    无法读取图片（跨域、图集、加载失败等）时会自动回退成矩形。
+- 只覆盖上述 4 个通道（墙另外还能挡黑暗、带光照阈值）；`Edge` 是 2D 的，同一 Level 内不同高度的
+  Token 会互相遮挡——这是"把 Token 当墙"的固有语义。
+
+### 兼容性
+
+- **Foundry VTT V14**（`minimum: 14`，`verified: 14.369`）；
+- **不依赖任何游戏系统**，所有功能都可跨系统使用；
+- Region Behavior 类型统一使用 `er-qol.*` 命名空间。
+
+### 安装
+
+在 Foundry 的「附加模块 → 安装模块」里粘贴 Manifest URL：
+
+```
+https://github.com/EternalRider/er-qol/releases/latest/download/module.json
+```
+
+或者手动把发布包解压到 `FoundryVTT/Data/modules/er-qol`，然后在模块管理里启用。
+
+### 语言
+
+内置 **English / 简体中文** 本地化；在 Foundry 的「设置 → 语言」里切换即可。
+
+### 反馈与问题
+
+- 问题反馈：<https://github.com/EternalRider/er-qol/issues>
+- 源码：<https://github.com/EternalRider/er-qol>
+
+### 许可
+
+**MIT** — 见 [LICENSE](LICENSE)。
+
+---
+
+## English
+
+**er-qol (EternalRider's QoL)** is a lightweight quality-of-life module for **Foundry Virtual Tabletop V14**.
+It bundles a few small, commonly needed tools: Region-based lighting, wall-like Region boundaries,
+region announcements, wall outlines on other layers, and token blocking. Everything works at the
+client / Region-behavior level and **does not depend on any game system**.
+
+### Features
+
+#### 1. Region Lighting
+
+A **Region Behavior** that emits **light or darkness using the Region's full shape and elevation range**,
+instead of a point light with a radius.
+
+- Supports the usual Foundry light configuration (bright/dim, color, attenuation, shadows, animations, …);
+- Supports **priority**, so Region lights/darkness can override lower-priority sources;
+- Great for "this corridor is dark" or "this room is lit by candles" with lighting that follows the terrain exactly.
+
+#### 2. Region Walls
+
+A **Region Behavior** that turns the Region boundary into a **wall**, per channel:
 
 | Channel | Meaning |
 | --- | --- |
-| Move | tokens cannot cross the boundary |
+| Movement | tokens cannot cross the Region boundary |
 | Sight | line of sight / visibility cannot cross |
 | Light | light cannot project through |
 | Sound | sound cannot project through |
 | Darkness | darkness cannot project through |
-| Direction | both ways, inside→outside only, or outside→inside only |
+| Direction | both ways / inside→outside only / outside→inside only |
 
-### 3. Region Announce *(new)*
+It also supports **elevation ranges**: the boundary only applies when the Region's elevation range
+overlaps the moving/sensing height.
 
-Post a **UI notification or chat message** when a token enters or leaves the Region.
+#### 3. Region Announce
 
-- separate entry/exit toggles, with `{token}` and `{region}` placeholders in the message;
-- visibility: everyone / GM + token owner / GM only;
-- optional sound effect with volume.
+A **Region Behavior** that posts a message when a token enters or leaves the Region.
 
-### 4. Wall Outlines On Other Layers *(new)*
+- Separate entry/exit toggles, with `{token}` and `{region}` placeholders;
+- Output: UI notification or chat message;
+- Visibility: everyone / GM and token owner / GM only;
+- Optional sound effect with volume.
 
-Client-side setting that draws a thin line for **every wall even when the Walls layer is not
-active**, so everyone can see where the real wall lines are while moving tokens around.
+#### 4. Wall Outlines On Other Layers
 
-- **default: one uniform configurable color** — deliberately *not* the Walls-layer colors. Every
-  wall is drawn the same way, **secret doors included**: because the lines are indistinguishable,
-  nothing stands out, whereas skipping a wall would mark its position by absence;
-- **multiple outline styles (new)**: open *Configure Wall Outline Styles* in the module settings to
-  define several lines. Each line configures its **line style** (solid / dashed / dotted / dash-dot /
-  dash-dot-dot), **color**, **width**, **condition** (which senses the wall blocks) and **priority**.
-  When one wall matches several lines, the **highest-priority** one is drawn; equal priorities use
-  the row order. Conditions are matched only against what the wall *blocks* — **never against the
-  wall type**, so a secret door that blocks sight is treated exactly like any other sight-blocking
-  wall;
-- `[]` (no styles configured) is the built-in default line: one uniform color for every wall;
-- configurable global opacity;
-- scope: only on other layers (hidden while the Walls layer is active) or always.
+A client-side setting that draws **every wall even when the Walls layer is not active**, so players can
+see where the real wall lines are while moving tokens.
 
-### 5. Token Blocking *(new)*
+- **By default: one uniform color, and every wall type (secret doors included) is drawn** — all lines look
+  the same, so secret doors are not revealed;
+- **Multiple configurable styles**: open *Configure Wall Outline Styles* in the module settings and add
+  one or more lines. Each line configures:
+  - **Line style**: solid / dashed / dotted / dash-dot / dash-dot-dot;
+  - **Color** and **width**;
+  - **Condition**: draw only walls that block at least one selected sense (empty = every wall);
+  - **Priority**: when a wall matches several lines, the highest-priority line is drawn
+    (ties use the row order).
+- Global opacity and scope: only on other layers / always;
+- Conditions are matched only against **what the wall blocks**, never against the wall type, so secret
+  doors stay indistinguishable.
 
-Give a token the same kind of presence as a wall: **the space it occupies blocks movement, sight,
-sound and/or light**. Configure it in the Token configuration window — there is a **Blocking** tab
-right after **Light** — and the values are stored on the **prototype token**, so tokens created
-afterwards inherit them.
+#### 5. Token Blocking
 
-- four independent channels: Blocks Movement / Sight / Sound / Light;
-- **blocking shape** (new): **Rectangle** (the default, matching the token's grid space),
-  **Ellipse / Circle** (an oval inside the space), or **Image Edge (experimental)** — the outline is
-  generated from the token image's opaque pixels (transparent parts are ignored; the contour is
-  cached per image and falls back to a rectangle if the image can't be read). The image-edge option
-  is a star-shaped approximation, so very concave or hollow artwork is only approximated;
-- **the token never blocks itself**. The outline behaves like a *one-way* wall:
-  - its own movement, vision, light and sound are **not** blocked by its own space;
-  - other tokens cannot enter its space (movement), and they **can see the token itself but cannot
-    see through it** (sight), because the sensing channels use `LIMITED` edges — the observer's ray
-    passes the near edge and stops at the far edge;
-  - other tokens' light/sound likewise reaches the token but does not project past it;
-- the blocking outline is the token's own footprint (its grid square(s)), so a door-sized token can
-  act as a door, a pillar token can block line of sight, etc.;
-- it participates in the same edge/sweep pipeline as walls, so sight, light, sound and movement
-  polygon checks all see it.
+Make a token (or an Actor's prototype token) block movement and senses like a wall.
 
-> Scope notes: only these four channels are covered (walls additionally block darkness, and carry a
-> light threshold). `Edge` is 2D, so tokens at different elevations **on the same Level** block each
-> other — that is the intended "a token acts as a wall" semantics.
+- Configure it in the Token configuration window — the **Blocking** tab comes **right after Light**;
+- Stored on the **prototype token**, so newly placed tokens inherit it;
+- Four independent channels: **Blocks Movement / Sight / Sound / Light**;
+- **The token never blocks itself**: its own movement, vision, light and sound are unaffected by its own
+  space. Other tokens cannot enter its space, and they **can see the token but cannot see through it**
+  (like a one-way wall);
+- **Blocking shape** is configurable:
+  - **Rectangle** (default): the token's grid space;
+  - **Ellipse / Circle**: an oval inside the grid space;
+  - **Image Edge (experimental)**: follows the opaque pixels of the token image and **ignores transparent
+    parts**; if the image cannot be read (cross-origin, atlas, load failure, …) it falls back to a rectangle.
+- Only these four channels are covered (walls additionally block darkness and carry light thresholds);
+  `Edge` is 2D, so tokens at different elevations on the same Level block each other — that is the intended
+  "a token acts as a wall" semantics.
 
-> Removed features (do not re-add):
-> - **Region Teleport** — core and several other modules already cover teleportation, and a teleport
->   without an animation is of limited use.
-> - **Hover Highlight / Region Info** — never worked reliably here; the author did not need them.
+### Compatibility
 
-## Compatibility
+- **Foundry VTT V14** (`minimum: 14`, `verified: 14.369`);
+- **No game-system dependency** — works on any system;
+- Region Behavior types use the `er-qol.*` namespace.
 
-- Foundry **V14** (`minimum: 14`, `verified: 14.369`). The two merged modules targeted V14 as well.
-- **er-qol namespaced behavior types only.** All three Region behaviors use `er-qol.*` type keys
-  (`er-qol.regionLighting`, `er-qol.regionWall`, `er-qol.regionAnnounce`).
-  The pre-release `region-lighting` / `region-walls` type keys are **not** carried over, so Region
-  behaviors created with those keys stop working unless the old module is still enabled (in which
-  case the old module keeps driving them).
-- The local `swpt` module gates its `buildRegionLightingData()` / `buildRegionWallData()` helpers on
-  `game.modules.get("region-lighting")?.active` (and the same for `region-walls`). If you use those
-  helpers, keep the two old modules enabled — the behaviors they create will then be handled by the
-  old modules.
-- No system dependency: works on any game system, tested against the core Region API.
+### Installation
 
-## Installation
-
-Manifest URL:
+In Foundry's *Add-on Modules → Install Module*, paste the manifest URL:
 
 ```
-https://github.com/fvtt-cn/er-qol/releases/latest/download/module.json
+https://github.com/EternalRider/er-qol/releases/latest/download/module.json
 ```
 
-Or drop the folder into `FoundryVTT/Data/modules/er-qol` and enable it.
+Or unzip the release into `FoundryVTT/Data/modules/er-qol` and enable it in *Manage Modules*.
 
-## Migrating from region-lighting / region-walls
+### Languages
 
-Those modules were never released, so there is no published data to migrate:
+Ships with **English / Simplified Chinese** localization; switch it in *Settings → Language*.
 
-1. Install and enable `er-qol`.
-2. Disable (or uninstall) `region-lighting` and `region-walls`.
-3. Re-create any Region behaviors that used the old type keys — pick the matching
-   `er-qol.*` behavior from the type dropdown and re-enter its settings. (The schema fields are
-   identical to the old ones, so the values carry over by hand.)
-4. Exception: if you use `swpt`'s Region helpers, keep the two old modules enabled (see
-   [Compatibility](#compatibility)).
+### Feedback & Issues
 
-## License
+- Issues: <https://github.com/EternalRider/er-qol/issues>
+- Source: <https://github.com/EternalRider/er-qol>
 
-Code: **MIT** — see [LICENSE](LICENSE).
+### License
 
-The original `region-lighting` and `region-walls` code was released by the same author under the MIT
-license and is merged here in its entirety.
+**MIT** — see [LICENSE](LICENSE).

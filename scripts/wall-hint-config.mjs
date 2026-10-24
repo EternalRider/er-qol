@@ -165,9 +165,10 @@ export class WallHintLinesConfig extends ApplicationBase {
     window: {
       title: "ERQOL.SETTINGS.wallHintLines.name",
       icon: "fa-solid fa-pen-ruler",
-      contentClasses: ["standard-form"]
+      contentClasses: ["standard-form", "erqol-wall-hint-lines-content"],
+      resizable: true
     },
-    position: {width: 640, height: 560},
+    position: {width: 660, height: 640},
     form: {
       closeOnSubmit: true,
       handler: this.#onSubmit
