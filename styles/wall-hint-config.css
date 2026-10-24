@@ -1,11 +1,13 @@
 /* er-qol：墙体线样式设置子菜单（WallHintLinesConfig）的布局微调。
  *
  * 只修"外观/可用性"，不改任何功能：
- * - 让窗口内容可滚动，保证 body 再长也不会把 footer 的「保存」按钮挤出窗口；
+ * - body 是 root part，会被 core 提升为 .window-content 的直接子元素（外层 div 不会保留），
+ *   因此这里全部用 `.erqol-wall-hint-lines-content > ...` 的直接子元素选择器；
+ * - 让窗口内容可滚动，保证 body 再长也不会把 footer 的保存按钮挤出窗口；
  * - 颜色 / 数字输入改成紧凑宽度（原生 color input 默认会拉满整行）；
  * - 条件复选框横向排布；
  * - 「删除」按钮靠右、不再整行铺满；
- * - 「添加样式 / 恢复默认」排成一行、按内容宽度显示。
+ * - 页脚按钮（添加 / 恢复默认 / 保存）按内容宽度显示。
  */
 
 .erqol-wall-hint-lines-content {
@@ -14,20 +16,14 @@
   overflow: hidden;
 }
 
-.erqol-wall-hint-lines {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: 0.5rem;
-  min-height: 0;
-}
-
-.erqol-wall-hint-lines .erqol-wall-hint-notes {
+/* .window-content 是 flex column：列表区吃掉剩余高度并在内部滚动 */
+.erqol-wall-hint-lines-content > .erqol-wall-hint-notes,
+.erqol-wall-hint-lines-content > .erqol-wall-hint-default-hint,
+.erqol-wall-hint-lines-content > .form-footer {
   flex: 0 0 auto;
-  margin: 0 0 0.25rem;
 }
 
-.erqol-wall-hint-lines .erqol-lines {
+.erqol-wall-hint-lines-content > .erqol-lines {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -37,7 +33,7 @@
   padding-inline-end: 0.35rem;
 }
 
-.erqol-wall-hint-lines fieldset.erqol-wall-line {
+.erqol-wall-hint-lines-content fieldset.erqol-wall-line {
   flex: 0 0 auto;
   margin: 0;
   padding: 0.4rem 0.75rem 0.6rem;
@@ -45,28 +41,28 @@
   border-radius: 6px;
 }
 
-.erqol-wall-hint-lines fieldset.erqol-wall-line > legend {
+.erqol-wall-hint-lines-content fieldset.erqol-wall-line > legend {
   padding: 0 0.35rem;
   font-weight: 600;
 }
 
-.erqol-wall-hint-lines fieldset.erqol-wall-line .form-group {
+.erqol-wall-hint-lines-content fieldset.erqol-wall-line .form-group {
   align-items: center;
   gap: 0.5rem;
   margin: 0.25rem 0;
 }
 
-.erqol-wall-hint-lines fieldset.erqol-wall-line .form-group > label {
+.erqol-wall-hint-lines-content fieldset.erqol-wall-line .form-group > label {
   flex: 0 0 auto;
   min-width: 5.5rem;
 }
 
-.erqol-wall-hint-lines fieldset.erqol-wall-line .form-group > .hint {
+.erqol-wall-hint-lines-content fieldset.erqol-wall-line .form-group > .hint {
   grid-column: 1 / -1;
   margin: 0.15rem 0 0;
 }
 
-.erqol-wall-hint-lines input[type="color"] {
+.erqol-wall-hint-lines-content input[type="color"] {
   inline-size: 4rem;
   min-inline-size: 4rem;
   block-size: 2rem;
@@ -74,12 +70,12 @@
   cursor: pointer;
 }
 
-.erqol-wall-hint-lines input[type="number"] {
+.erqol-wall-hint-lines-content input[type="number"] {
   inline-size: 6rem;
   text-align: center;
 }
 
-.erqol-wall-hint-lines .erqol-wall-line-blocking {
+.erqol-wall-hint-lines-content .erqol-wall-line-blocking {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -87,20 +83,20 @@
   gap: 0.25rem 0.9rem;
 }
 
-.erqol-wall-hint-lines .erqol-wall-line-blocking label.checkbox {
+.erqol-wall-hint-lines-content .erqol-wall-line-blocking label.checkbox {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
   white-space: nowrap;
 }
 
-.erqol-wall-hint-lines .erqol-wall-line-footer {
+.erqol-wall-hint-lines-content .erqol-wall-line-footer {
   display: flex;
   justify-content: flex-end;
   margin-top: 0.35rem;
 }
 
-.erqol-wall-hint-lines .erqol-wall-line-delete {
+.erqol-wall-hint-lines-content .erqol-wall-line-delete {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
@@ -109,24 +105,19 @@
   padding: 0.25rem 0.6rem;
 }
 
-.erqol-wall-hint-lines .erqol-wall-line-buttons {
+/* 页脚按钮：三个按钮排成一行，按内容宽度显示，不铺满 */
+.erqol-wall-hint-lines-content > .form-footer {
   display: flex;
-  flex: 0 0 auto;
   flex-wrap: wrap;
-  gap: 0.5rem;
   justify-content: flex-start;
+  gap: 0.5rem;
 }
 
-.erqol-wall-hint-lines .erqol-wall-line-buttons button {
+.erqol-wall-hint-lines-content > .form-footer > button {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   gap: 0.35rem;
   inline-size: auto;
   padding: 0.3rem 0.7rem;
-}
-
-.erqol-wall-hint-lines .erqol-wall-hint-default-hint {
-  flex: 0 0 auto;
-  margin: 0;
 }

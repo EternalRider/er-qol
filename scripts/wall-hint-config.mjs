@@ -198,11 +198,25 @@ export class WallHintLinesConfig extends ApplicationBase {
     this._drafts = null;
     return {
       lines: buildRows(drafts),
-      buttons: [{
-        type: "submit",
-        icon: "fa-solid fa-floppy-disk",
-        label: "ERQOL.SETTINGS.wallHintLines.save"
-      }]
+      buttons: [
+        {
+          type: "button",
+          action: "addLine",
+          icon: "fa-solid fa-plus",
+          label: "ERQOL.SETTINGS.wallHintLines.add"
+        },
+        {
+          type: "button",
+          action: "resetLines",
+          icon: "fa-solid fa-rotate-left",
+          label: "ERQOL.SETTINGS.wallHintLines.reset"
+        },
+        {
+          type: "submit",
+          icon: "fa-solid fa-floppy-disk",
+          label: "ERQOL.SETTINGS.wallHintLines.save"
+        }
+      ]
     };
   }
 
